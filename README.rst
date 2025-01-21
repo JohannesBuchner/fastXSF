@@ -58,6 +58,15 @@ Approach
 Getting started
 ---------------
 
+Prerequisites:
+
+  * install and load xspec/heasoft
+  * install https://github.com/cxcsds/xspec-models-cxc/
+  * install ultranest (pip install ultranest)
+  * download this repository and enter it from the command line.
+
+Test with: `python -c 'import xspec_models_cxc; import ultranest'`
+
 To start, have a look at simple.py, which demonstrates:
 
 * loading a spectrum
