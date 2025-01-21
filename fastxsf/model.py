@@ -5,6 +5,9 @@ import numpy as np
 import tqdm
 import xspec_models_cxc as x
 from scipy.interpolate import RegularGridInterpolator
+from joblib import Memory
+
+mem = Memory('.', verbose=False)
 
 def logPoissonPDF_vectorized(models, counts):
     """Compute poisson probability.
@@ -46,7 +49,6 @@ def logPoissonPDF(model, counts):
     return np.sum(log_model * counts) - model.sum()
 
 
-
 def xvec(model, energies, pars):
     """<summary sentence of function in imperative>.
 
@@ -70,6 +72,14 @@ def xvec(model, energies, pars):
         results[i, :] = model(energies=energies, pars=pars_i)
     return results
 
+
+@mem.cache
+def check_if_sorted(param_vals, parameter_grid):
+    for i, params in enumerate(itertools.product(*parameter_grid)):
+        if not np.all(param_vals[i] == params):
+            return False
+    return True
+    
 
 class Table:
     def __init__(self, filename, method="linear"):
@@ -99,12 +109,7 @@ class Table:
         print(f'ATABLE "{self.name}"')
         for param_name, param_values in zip(self.parameter_names, parameter_grid):
             print(f"    {param_name}: {param_values.tolist()}")
-        is_sorted = True
-        for i, params in enumerate(itertools.product(*parameter_grid)):
-            if not np.all(specdata["PARAMVAL"][i] == params):
-                is_sorted = False
-                break
-        print("sorted:", is_sorted)
+        is_sorted = check_if_sorted(specdata["PARAMVAL"], parameter_grid)
         shape = tuple([len(g) for g in parameter_grid] + [len(specdata["INTPSPEC"][0])])
 
         if is_sorted:
