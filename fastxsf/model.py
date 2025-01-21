@@ -23,8 +23,8 @@ def logPoissonPDF_vectorized(models, counts):
         ln of the Poisson likelihood, neglecting the factorial(counts) factor,
         shape=(num_models,).
     """
-    log_models = np.log(models)
-    return np.sum(log_models * counts, axis=1) - log_models.sum(axis=1)
+    log_models = np.log(np.clip(models, 1e-100, None))
+    return np.sum(log_models * counts.reshape((1, -1)), axis=1) - models.sum(axis=1)
 
 def logPoissonPDF(model, counts):
     """Compute poisson probability.
@@ -42,8 +42,8 @@ def logPoissonPDF(model, counts):
     loglikelihood: float
         ln of the Poisson likelihood, neglecting the factorial(counts) factor.
     """
-    log_model = np.log(model)
-    return np.sum(log_model * counts) - log_model.sum()
+    log_model = np.log(np.clip(model, 1e-100, None))
+    return np.sum(log_model * counts) - model.sum()
 
 
 

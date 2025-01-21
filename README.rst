@@ -3,31 +3,39 @@ FastXSF
 
 Fast X-ray spectral fitting.
 
-Currently, there are the following issues in modern X-ray spectral fitting:
+Background
+----------
 
-1. Response matrices have become huge (e.g. XRISM), making models slow to evaluate.
-2. XSPEC is not developed openly and its quirks make it difficult to build upon.
-3. Models are maintained by the community in XSPEC.
-4. Maintaining additional software packages requires institutional efforts (CXC: sherpa, SRON: spex).
-5. Not all models are differentiable. Reimplementing them in a differentiable language one by one is a significant effort, but has been tried but such projects tend to die out (see also 3ML astromodels).
-6. Inference parameter spaces are complicated in X-ray astronomy, with multiple modes and 
-7. Bayesian Model Comparison is nice to have.
+Currently, there are the following issues in modern X-ray spectral fitting software:
+
+1. Response matrices have become huge (e.g. XRISM, NuSTAR), making models slow to evaluate.
+2. XSPEC is not developed openly and its quirks make it difficult to build upon it and extend it.
+3. Yet models are maintained by the community in XSPEC.
+4. Maintaining additional software packages requires substantial institutional efforts (CXC: sherpa, SRON: spex).
+5. Not all models are differentiable. Reimplementing them in a differentiable language one by one is a significant effort with little recognition.
+   Nevertheless, it has been and is being tried. Yet such reimplementations tend to fade out (see also 3ML astromodels).
+6. Inference parameter spaces are complicated, with multiple modes and other complicated degeneracies being common in X-ray spectral fitting.
+7. Bayesian model comparison is very nice to have.
 
 Therefore, we want:
 
-1) Performant code
+1) Performant software package
 2) Community packages from XSPEC
 3) Nested sampling
+4) Minimum maintainance effort
 
 FastXSF does that.
+
+xspex&jaxspec do 1+4, xspec/sherpa+BXA does 2+3.
 
 Approach
 --------
 
 1) Vectorization.
    Folding the spectrum through the RMF is vectorized.
-   Handling many proposed spectra at once keeps memory low and efficiency high.
-   Modern Bayesian sampling algorithms (e.g. UltraNest) can handle this.
+   Handling many proposed spectra at once keeps memory low and efficiency high:
+   Each chunk of the response matrix is applied to all spectra.
+   Modern Bayesian samplers such as UltraNest can handle vectorized functions.
 
 2) Building upon the CXC (Doug Burke's) wrapper for Xspec models. https://github.com/cxcsds/xspec-models-cxc/
    All XSPEC models are available for use!
@@ -41,7 +49,8 @@ Approach
 4) We treat X-ray spectral fitting as a normal inference problem like any other!
 
    Define a likelihood, prior and call a sampler. No need to carry around
-   chi-square, C-stat, background-subtraction legacy awkwardness!
+   legacy awkwardness such as chi-square, C-stat, 
+   background-subtraction, identify matrix folding, multi-source to data mappings.
 
 Getting started
 ---------------
@@ -49,17 +58,26 @@ Getting started
 To start, have a look at simple.py, which demonstrates:
 
 * loading a spectrum
-* loading a ATable
+* loading a ATable. Download it from: https://github.com/JohannesBuchner/xars/blob/master/doc/uxclumpy.rst
 * setting up a XSPEC model
 * passing the model through the ARF and RMF
 * adding a background model
+* plotting the spectrum of the source and background model on top of the data
 * computing the likelihood and print it
-* plotting source and background fit and spectrum
 
 Next, the vectorization is in simplev.py, which demonstrates the same as above plus:
 
 * vectorized handling of proposals
-* launching UltraNest
+* launching UltraNest for sampling the posterior, make corner plots.
+
+Take it for a spin and adapt it!
+
+Todo
+----
+
+* Profile where the code is still slow.
+* There is a python loop in fastxsf/model.py::Table.__call__ which should be replaced with something smarter
+* Compute fluxes and luminosities.
 
 Credits
 --------
