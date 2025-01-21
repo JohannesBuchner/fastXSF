@@ -16,6 +16,7 @@ Currently, there are the following issues in modern X-ray spectral fitting softw
    Nevertheless, it has been and is being tried. Yet such reimplementations tend to fade out (see also 3ML astromodels).
 6. Inference parameter spaces are complicated, with multiple modes and other complicated degeneracies being common in X-ray spectral fitting.
 7. `Bayesian model comparison <https://ui.adsabs.harvard.edu/abs/2014A%26A...564A.125B/>`_ is powerful and we want it.
+8. The X-ray community is walled off from other communities by vendor lock-in and its own odd terminology. But `X-ray spectral fitting is neither complicated nor a special case! <https://arxiv.org/abs/2309.05705>`_
 
 Therefore, we want:
 
@@ -27,6 +28,8 @@ Therefore, we want:
 FastXSF does that.
 
 xspex&jaxspec do 1, xspec/sherpa+BXA does 2+3.
+
+FastXSF is a few hundred lines of code.
 
 Approach
 --------
