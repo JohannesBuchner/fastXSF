@@ -131,7 +131,7 @@ class RMF(object):
         nz_idx = (n_grp > 0)
 
         # stack all non-zero rows in the matrix
-        matrix_flat = np.hstack(matrix[nz_idx])
+        matrix_flat = np.hstack(matrix[nz_idx], dtype=float)
 
         # stack all nonzero rows in n_chan and f_chan
         #n_chan_flat = np.hstack(n_chan[nz_idx])
@@ -149,11 +149,11 @@ class RMF(object):
                 f = f_chan[i]
                 nc = n_chan[i]
                 if np.size(f) == 1:
-                    f_chan_new.append(f)
-                    n_chan_new.append(nc)
+                    f_chan_new.append(f.astype(np.int64))
+                    n_chan_new.append(nc.astype(np.int64))
                 else:
-                    f_chan_new.append(f[:n])
-                    n_chan_new.append(nc[:n])
+                    f_chan_new.append(f[:n].astype(np.int64))
+                    n_chan_new.append(nc[:n].astype(np.int64))
 
         n_chan_flat = np.hstack(n_chan_new)
         f_chan_flat = np.hstack(f_chan_new)
@@ -320,24 +320,27 @@ class RMF(object):
 
             # loop over the current number of groups
             for j in range(current_num_groups):
-                current_num_chans = int(self.n_chan[k])
-                if current_num_chans == 0:
-                    k += 1
-                    resp_idx += current_num_chans
-                    continue
-                else:
-                    # get the right index for the start of the counts array
-                    # to put the data into
-                    counts_idx = int(self.f_chan[k] - self.offset)
-                    # this is the current number of channels to use
+                current_num_chans = self.n_chan[k]
+                #assert current_num_chans != 0
+                # get the right index for the start of the counts array
+                # to put the data into
+                counts_idx = self.f_chan[k] - self.offset
+                # this is the current number of channels to use
 
-                    k += 1
-                    # add the flux to the subarray of the counts array that starts with
-                    # counts_idx and runs over current_num_chans channels
-                    to_add = np.einsum('j,i->ij', self.matrix[resp_idx:resp_idx + current_num_chans], source_bin_i)
-                    counts[:,counts_idx:counts_idx + current_num_chans] += to_add
-                    # iterate the response index for next round
-                    resp_idx += current_num_chans
+                k += 1
+                # add the flux to the subarray of the counts array that starts with
+                # counts_idx and runs over current_num_chans channels
+                # assert resp_idx >= 0 and current_num_chans >= 0 and counts_idx >= 0
+                #to_add = np.einsum('j,i->ij', self.matrix[resp_idx:resp_idx + current_num_chans], source_bin_i)
+                to_add = np.outer(source_bin_i, self.matrix[resp_idx:resp_idx + current_num_chans])
+                counts[:,counts_idx:counts_idx + current_num_chans] += to_add
+                #outer_add(
+                #    self.matrix[resp_idx:resp_idx + current_num_chans],
+                #    specs, i,
+                #    counts, counts_idx)
+
+                # iterate the response index for next round
+                resp_idx += current_num_chans
 
 
         return counts[:,:self.detchans]
