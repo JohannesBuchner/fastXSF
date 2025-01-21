@@ -222,37 +222,29 @@ class RMF(object):
 
             # this is the current bin in the flux spectrum to
             # be folded
-            source_bin_i = float(spec[i])
+            source_bin_i = spec[i]
 
             # get the current number of groups
             current_num_groups = self.n_grp[i]
 
             # loop over the current number of groups
             for j in range(current_num_groups):
+                current_num_chans = self.n_chan[k]
 
-                current_num_chans = int(self.n_chan[k])
+                # get the right index for the start of the counts array
+                # to put the data into
+                counts_idx = self.f_chan[k] - self.offset
+                # this is the current number of channels to use
 
-                if current_num_chans == 0:
-                    k += 1
-                    resp_idx += current_num_chans
-                    continue
-
-
-                else:
-                    # get the right index for the start of the counts array
-                    # to put the data into
-                    counts_idx = int(self.f_chan[k] - self.offset)
-                    # this is the current number of channels to use
-
-                    k += 1
-                    # add the flux to the subarray of the counts array that starts with
-                    # counts_idx and runs over current_num_chans channels
-                    counts[counts_idx:counts_idx +
-                                      current_num_chans] += self.matrix[resp_idx:resp_idx +
-                                                                                 current_num_chans] * \
-                                                                source_bin_i
-                    # iterate the response index for next round
-                    resp_idx += current_num_chans
+                k += 1
+                # add the flux to the subarray of the counts array that starts with
+                # counts_idx and runs over current_num_chans channels
+                counts[counts_idx:counts_idx +
+                                  current_num_chans] += self.matrix[resp_idx:resp_idx +
+                                                                             current_num_chans] * \
+                                                            source_bin_i
+                # iterate the response index for next round
+                resp_idx += current_num_chans
 
 
         return counts[:self.detchans]
@@ -330,14 +322,8 @@ class RMF(object):
                 k += 1
                 # add the flux to the subarray of the counts array that starts with
                 # counts_idx and runs over current_num_chans channels
-                # assert resp_idx >= 0 and current_num_chans >= 0 and counts_idx >= 0
-                #to_add = np.einsum('j,i->ij', self.matrix[resp_idx:resp_idx + current_num_chans], source_bin_i)
                 to_add = np.outer(source_bin_i, self.matrix[resp_idx:resp_idx + current_num_chans])
                 counts[:,counts_idx:counts_idx + current_num_chans] += to_add
-                #outer_add(
-                #    self.matrix[resp_idx:resp_idx + current_num_chans],
-                #    specs, i,
-                #    counts, counts_idx)
 
                 # iterate the response index for next round
                 resp_idx += current_num_chans
