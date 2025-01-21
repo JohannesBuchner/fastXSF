@@ -15,18 +15,18 @@ Currently, there are the following issues in modern X-ray spectral fitting softw
 5. Not all models are differentiable. Reimplementing them in a differentiable language one by one is a significant effort with little recognition.
    Nevertheless, it has been and is being tried. Yet such reimplementations tend to fade out (see also 3ML astromodels).
 6. Inference parameter spaces are complicated, with multiple modes and other complicated degeneracies being common in X-ray spectral fitting.
-7. Bayesian model comparison is very nice to have.
+7. `Bayesian model comparison <https://ui.adsabs.harvard.edu/abs/2014A%26A...564A.125B/>`_ is powerful and we want it.
 
 Therefore, we want:
 
-1) Performant software package
-2) Community packages from XSPEC
-3) Nested sampling
-4) Minimum maintainance effort
+1) A performant software package
+2) All community packages from XSPEC
+3) Nested sampling for model comparison and robust parameter estimation
+4) Minimum package maintainance effort
 
 FastXSF does that.
 
-xspex&jaxspec do 1+4, xspec/sherpa+BXA does 2+3.
+xspex&jaxspec do 1, xspec/sherpa+BXA does 2+3.
 
 Approach
 --------
@@ -58,7 +58,7 @@ Getting started
 To start, have a look at simple.py, which demonstrates:
 
 * loading a spectrum
-* loading a ATable. Download it from: https://github.com/JohannesBuchner/xars/blob/master/doc/uxclumpy.rst
+* loading a ATable (download the table from `the xars models page <https://github.com/JohannesBuchner/xars/blob/master/doc/README.rst>`_)
 * setting up a XSPEC model
 * passing the model through the ARF and RMF
 * adding a background model
