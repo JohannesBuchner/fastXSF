@@ -37,7 +37,29 @@ Approach
    * Use BXA's autobackground folder to create a background spectral model from your background region.
    * Use BXA's galnh.py to fetch the galactic NH for the position of your observation and store it in my.pha.nh as a string (e.g. 1.2e20).
    * Store the redshift in my.pha.z as a string.
-   
+
+4) We treat X-ray spectral fitting as a normal inference problem like any other!
+
+   Define a likelihood, prior and call a sampler. No need to carry around
+   chi-square, C-stat, background-subtraction legacy awkwardness!
+
+Getting started
+---------------
+
+To start, have a look at simple.py, which demonstrates:
+
+* loading a spectrum
+* loading a ATable
+* setting up a XSPEC model
+* passing the model through the ARF and RMF
+* adding a background model
+* computing the likelihood and print it
+* plotting source and background fit and spectrum
+
+Next, the vectorization is in simplev.py, which demonstrates the same as above plus:
+
+* vectorized handling of proposals
+* launching UltraNest
 
 Credits
 --------

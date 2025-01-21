@@ -9,6 +9,7 @@ fastxsf.x.cross_section('vern')
 # load the spectrum:
 data = fastxsf.load_pha('example/179.pi', 0.5, 8)
 
+# fetch some basic information from our observation
 e_lo = data['e_lo']
 e_hi = data['e_hi']
 e_mid = (data['e_hi'] + data['e_lo']) / 2.
@@ -76,6 +77,7 @@ def loglikelihood(params, plot=False):
     # compute log Poisson probability
     like_srcreg = fastxsf.logPoissonPDF_vectorized(pred_counts_srcreg, data['src_region_counts'])
     like_bkgreg = fastxsf.logPoissonPDF_vectorized(pred_counts_bkg_bkgreg, data['bkg_region_counts'])
+    # combined the probabilities. If fitting multiple spectra, you would add them up here as well
     return like_srcreg + like_bkgreg
 
 import scipy.stats
