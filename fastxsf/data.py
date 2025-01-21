@@ -23,7 +23,7 @@ def get_ARF(arf_filename):
     ARF: object
         ARF object
     """
-    return ARF(arffile)
+    return ARF(arf_filename)
 
 
 @cache
@@ -40,7 +40,7 @@ def get_RMF(rmf_filename):
     RMF: object
         RMF object
     """
-    return RMF(rmffile)
+    return RMF(rmf_filename)
 
 
 def load_pha(filename, elo, ehi, load_absorption=True, z=None):

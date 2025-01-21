@@ -74,8 +74,8 @@ def loglikelihood(params, plot=False):
         plt.close()
 
     # compute log Poisson probability
-    like_srcreg = fastxsf.logPoissonPDF(pred_counts_srcreg, data['src_region_counts'])
-    like_bkgreg = fastxsf.logPoissonPDF(pred_counts_bkg_bkgreg, data['bkg_region_counts'])
+    like_srcreg = fastxsf.logPoissonPDF_vectorized(pred_counts_srcreg, data['src_region_counts'])
+    like_bkgreg = fastxsf.logPoissonPDF_vectorized(pred_counts_bkg_bkgreg, data['bkg_region_counts'])
     return like_srcreg + like_bkgreg
 
 import scipy.stats

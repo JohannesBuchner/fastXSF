@@ -42,8 +42,8 @@ def logPoissonPDF(model, counts):
     loglikelihood: float
         ln of the Poisson likelihood, neglecting the factorial(counts) factor.
     """
-    log_models = np.log(models)
-    return np.sum(log_models * counts, axis=1) - log_models.sum(axis=1)
+    log_model = np.log(model)
+    return np.sum(log_model * counts) - log_model.sum()
 
 
 
