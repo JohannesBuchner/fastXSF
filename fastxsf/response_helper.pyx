@@ -6,6 +6,31 @@ cimport numpy as np
 np.import_array()
 cimport cython
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def apply_rmf_vectorized_chunked(
+    np.ndarray[float, ndim=1] matrix,
+    np.ndarray[np.int64_t, ndim=1] indices_channel_lengths,
+    np.ndarray[np.int64_t, ndim=1] chunks_size,
+    np.ndarray[np.int64_t, ndim=1] chunks_counts_start_idx,
+    np.ndarray[np.int64_t, ndim=1] chunks_resp_start_idx,
+    np.ndarray[double, ndim=2] specs,
+    np.ndarray[double, ndim=2] output,
+):
+    # get the number of channels in the data
+    cdef size_t nspecs = specs.shape[0]
+    cdef size_t nchannels = specs.shape[1]
+    
+    j = 0
+    for i in range(nchannels):
+        for chunkid in range(indices_channel_lengths[i]):
+            chunk_size = chunks_size[j]
+            counts_start_idx = chunks_counts_start_idx[j]
+            resp_start_idx = chunks_resp_start_idx[j]
+            for s in range(nspecs):
+                for k in range(chunk_size):
+                    output[s, counts_start_idx + k] = matrix[resp_start_idx + k] * specs[s, i]
+            j += 1
 
 @cython.boundscheck(False)
 @cython.wraparound(False)

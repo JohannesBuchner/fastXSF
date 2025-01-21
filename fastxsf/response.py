@@ -2,7 +2,7 @@
 
 import numpy as np
 import astropy.io.fits as fits
-from .response_helper import apply_rmf_vectorized
+from .response_helper import apply_rmf_vectorized, apply_rmf_vectorized_chunked
 
 __all__ = ["RMF", "ARF"]
 
@@ -90,7 +90,6 @@ class RMF(object):
         # flatten the variable-length arrays
         self.n_grp, self.f_chan, self.n_chan, self.matrix = \
                 self._flatten_arrays(n_grp, f_chan, n_chan, matrix)
-        self.learn_rmf()
 
         return
 
@@ -167,7 +166,7 @@ class RMF(object):
 
         return n_grp, f_chan_flat, n_chan_flat, matrix_flat
 
-    def learn_rmf(self):
+    def learn_rmf(self, mask):
         """
         Fold the spectrum through the redistribution matrix.
 
@@ -202,10 +201,16 @@ class RMF(object):
 
         """
         # get the number of channels in the data
+        ilo = np.where(mask)[0][0]
+        ihi = np.where(mask)[0][-1]
         indices_map_in = []
         indices_map_out = []
         indices_map_weights = []
+        chunks_size = []
+        chunks_counts_start_idx = []
+        chunks_resp_start_idx = []
         nchannels = len(self.energ_lo)
+        indices_channel_lengths = np.zeros(nchannels, dtype=np.int64)
 
         # index for n_chan and f_chan incrementation
         k = 0
@@ -216,6 +221,9 @@ class RMF(object):
         # loop over all channels
         for i in range(nchannels):
             # get the current number of groups
+            chunks_here_size = []
+            chunks_here_counts_start_idx = []
+            chunks_here_resp_start_idx = []
             current_num_groups = self.n_grp[i]
 
             # loop over the current number of groups
@@ -234,12 +242,37 @@ class RMF(object):
                     k += 1
                     # add the flux to the subarray of the counts array that starts with
                     # counts_idx and runs over current_num_chans channels
+                    num_chans_here = 0
+                    #l_first = None
+                    l_first = 0
                     for l in range(current_num_chans):
+                        #if ilo <= counts_idx + l < ihi:
                         indices_map_out.append(counts_idx + l)
                         indices_map_weights.append(self.matrix[resp_idx + l])
                         indices_map_in.append(i)
+                        num_chans_here += 1
+                        #if l_first is None:
+                        #    l_first = l
+                    #if l_first is not None:
+                    chunks_here_size.append(num_chans_here)
+                    chunks_here_counts_start_idx.append(counts_idx + l_first)
+                    chunks_here_resp_start_idx.append(resp_idx + l_first)
                     # iterate the response index for next round
                     resp_idx += current_num_chans
+
+            # store chunks
+            chunks_here_size = np.array(chunks_here_size, dtype=np.int64)
+            chunks_here_counts_start_idx = np.array(chunks_here_counts_start_idx, dtype=np.int64)
+            chunks_here_resp_start_idx = np.array(chunks_here_resp_start_idx, dtype=np.int64)
+            indices_channel_lengths[i] = len(chunks_here_size)
+            chunks_size.append(chunks_here_size)
+            chunks_counts_start_idx.append(chunks_here_counts_start_idx)
+            chunks_resp_start_idx.append(chunks_here_resp_start_idx)
+        
+        self.chunks_size = np.hstack(chunks_size)
+        self.chunks_counts_start_idx = np.hstack(chunks_counts_start_idx)
+        self.chunks_resp_start_idx = np.hstack(chunks_resp_start_idx)
+        self.indices_channel_lengths = indices_channel_lengths
 
         self.indices_map_in = np.array(indices_map_in, dtype=np.int64)
         self.indices_map_out = np.array(indices_map_out, dtype=np.int64)
@@ -248,6 +281,11 @@ class RMF(object):
         print(self.indices_map_in.shape, self.indices_map_in.dtype)
         print(self.indices_map_out.shape, self.indices_map_out.dtype)
         print(self.indices_map_weights.shape, self.indices_map_weights.dtype)
+
+        print(self.chunks_size.shape, self.chunks_size.dtype)
+        print(self.chunks_counts_start_idx.shape, self.chunks_counts_start_idx.dtype)
+        print(self.chunks_resp_start_idx.shape, self.chunks_resp_start_idx.dtype)
+        print(self.indices_channel_lengths.shape, self.indices_channel_lengths.dtype)
 
     def apply_rmf(self, spec):
         """
@@ -382,10 +420,21 @@ class RMF(object):
         """
         # get the number of channels in the data
         counts = np.zeros((len(specs), self.detchans))
-        apply_rmf_vectorized(
-            self.indices_map_weights,
-            self.indices_map_in,
-            self.indices_map_out,
+        print(
+            self.matrix.dtype,
+            self.indices_channel_lengths.dtype,
+            self.chunks_size.dtype,
+            self.chunks_counts_start_idx.dtype,
+            self.chunks_resp_start_idx.dtype,
+            specs.dtype,
+            counts.dtype)
+
+        apply_rmf_vectorized_chunked(
+            self.matrix,
+            self.indices_channel_lengths,
+            self.chunks_size,
+            self.chunks_counts_start_idx,
+            self.chunks_resp_start_idx,
             specs,
             counts)
         return counts

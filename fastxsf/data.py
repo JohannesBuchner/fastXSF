@@ -5,7 +5,6 @@ import astropy.io.fits as pyfits
 import numpy as np
 from astropy import units as u
 from astropy.cosmology import Planck18 as cosmo
-
 from .response import ARF, RMF
 
 
@@ -89,17 +88,18 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
     ), "background must have same ARF"
 
     aarf = get_ARF(arffile)
+    ebounds = pyfits.getdata(rmffile, "EBOUNDS")
+    chan_e_min = ebounds["E_MIN"]
+    chan_e_max = ebounds["E_MAX"]
+    mask = np.logical_and(chan_e_min > elo, chan_e_max < ehi)
+
     armf = get_RMF(rmffile)
+    armf.learn_rmf(mask)
     m = armf.get_dense_matrix()
     Nflux, Nchan = m.shape
 
     assert (Nflux,) == armf.energ_lo.shape == armf.energ_hi.shape
     assert (Nflux,) == aarf.e_low.shape == aarf.e_high.shape
-
-    ebounds = pyfits.getdata(rmffile, "EBOUNDS")
-    chan_e_min = ebounds["E_MIN"]
-    chan_e_max = ebounds["E_MAX"]
-    mask = np.logical_and(chan_e_min > elo, chan_e_max < ehi)
 
     channels = a["SPECTRUM"].data["CHANNEL"]
     # assert np.allclose(channels, np.arange(Nchan)+1), (channels, Nchan)
