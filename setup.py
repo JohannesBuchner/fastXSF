@@ -15,7 +15,7 @@ with open('HISTORY.rst', encoding="utf-8") as history_file:
     history = re.sub(r':py:class:`([^`]+)`', r'\1', 
         history_file.read())
 
-requirements = ['numpy', 'scipy', 'matplotlib', 'corner', 'optns', 'tqdm', 'ultranest', 'astropy', 'xspec_models_cxc']
+requirements = ['numpy', 'scipy', 'matplotlib', 'corner', 'optns', 'tqdm', 'ultranest', 'astropy', 'git+https://github.com/cxcsds/xspec-models-cxc']
 
 setup_requirements = ['pytest-runner', ]
 
