@@ -62,7 +62,6 @@ def test_pexpl_table():
     deltae = e_hi - e_lo
     Ecut = 1000
     Incl = 70
-    PhoIndex = 2.0
     ZHe = 1
     ZFe = 1
     for PhoIndex in 2.8, 2.0, 1.2:
