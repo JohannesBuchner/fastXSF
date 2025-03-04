@@ -12,25 +12,70 @@ jobs:
       matrix:
         python-version: [3.12]
 
+    defaults:
+      run:
+        # this is needed, because otherwise conda env is not available
+        shell: bash -l {0}
+
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Install system dependencies
-        run: sudo apt-get -y --no-install-recommends install -y ghostscript
+        run: sudo apt-get update && sudo apt-get -y --no-install-recommends install -y ghostscript
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+      - uses: mamba-org/setup-micromamba
         with:
-          python-version: ${{ matrix.python-version }}
+          environment-name: test
+          cache-environment: false
+          cache-downloads: true
 
-      - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@v5
+      - name: Set directory names
+        run: |
+          echo "MODELDIR=$HOME/Downloads/models" >> $GITHUB_ENV
+          echo "MYCACHE=$HOME/Downloads/xspec" >> $GITHUB_ENV
+          echo "PATH=$PATH:$HOME/.local/bin/" >> $GITHUB_ENV
+
+      - name: Cache models
+        uses: pat-s/always-upload-cache@v3.0.11
+        id: cache-downloads
         with:
-          python-version: ${{ matrix.python-version }}
-          enable-cache: true
+          path: ${{ env.MODELDIR }}
+          key: cache-downloads
 
-      - name: Install dev dependencies
-        run: uv pip install -r requirements_dev.txt
+      - name: Download models (if necessary)
+        run: |
+             mkdir -p $MODELDIR
+             pushd $MODELDIR
+             wget -q -nc https://zenodo.org/record/1169181/files/uxclumpy-cutoff.fits https://zenodo.org/records/2224651/files/wedge.fits https://zenodo.org/records/2224472/files/diskreflect.fits
+             popd
+
+      - name: Install python dependencies
+        run: |
+          micromamba create -y -n heasoft --override-channels -c https://cxc.cfa.harvard.edu/conda/ciao -c conda-forge xspec-modelsonly "matplotlib>=3.5" ultranest "coverage<7.0.0" coveralls==3.3.1 scipy h5py astropy requests cython tqdm coverage toml flake8 pycodestyle pydocstyle pytest pytest-html pytest-xdist h5py &&
+          micromamba activate heasoft &&
+          echo "--- Environment dump start ---" &&
+          env &&
+          echo "--- Environment dump end ---" &&
+          pip install git+https://github.com/JohannesBuchner/coverage-lcov &&
+          sudo sed -i '/PDF/s/none/read|write/' /etc/ImageMagick-6/policy.xml &&
+          pip uninstall -y h5py &&
+          pip install --no-cache-dir h5py
+
+      - name: Conda info
+        run: |
+          micromamba activate heasoft
+          micromamba info
+      - name: Conda list
+        run: |
+          micromamba activate heasoft
+          micromamba list
+      - name: Conda paths
+        run: |
+          micromamba activate heasoft
+          pwd
+          echo $PATH
+          ls $CONDA/bin/
+          which coverage
 
       - name: Lint with flake8
         run: flake8 fastxsf
@@ -41,71 +86,17 @@ jobs:
       - name: Check doc style
         run: pydocstyle fastxsf
 
-      - name: Set directory names
-        run: |
-          echo "MYCACHE=$HOME/Downloads/xspec" >> $GITHUB_ENV
-          echo "PATH=$PATH:$HOME/.local/bin/" >> $GITHUB_ENV
-
-      - name: Cache xspec install
-        uses: pat-s/always-upload-cache@v3.0.11
-        id: cache-xspec
-        env:
-          cache-name: cache-xspec-install
-          cache-version: 4
-        with:
-          path: ${{ env.MYCACHE }}/xspec-install
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ matrix.python-version }}-${{ env.cache-version }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}-${{ matrix.python-version }}-${{ env.cache-version }}
-            ${{ runner.os }}-build-${{ env.cache-name }}-${{ matrix.python-version }}
-
-      - name: Download and Install heasoft (if necessary)
-        run: |
-            mkdir -p $MYCACHE
-            pushd $MYCACHE
-            if ! ls -d $MYCACHE/xspec-install/x86_64-pc-linux-gnu-libc*/; then
-              rm -rf heasoft*/;
-              wget -O - 'https://heasarc.gsfc.nasa.gov/cgi-bin/Tools/tarit/tarit.pl?mode=download&arch=src&src_pc_linux_ubuntu=Y&src_other_specify=&general=heasptools&general=heagen&xanadu=xspec' --header 'User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:84.0) Gecko/20100101 Firefox/84.0' --header 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8' --header 'Accept-Language: en-US' --header 'DNT: 1' --header 'Connection: keep-alive' --header 'Referer: https://heasarc.gsfc.nasa.gov/lheasoft/download.html' --header 'Upgrade-Insecure-Requests: 1' --header 'Sec-GPC: 1' --progress=dot:giga | tar -xzf -
-              ls heasoft*;
-              ls;
-              echo "compiling xspec";
-              sudo apt-get install -y gfortran build-essential cmake liblapack3 liblapack-dev libatlas3-base libatlas-base-dev libblas3 libblas-dev libreadline-dev;
-              ls heasoft*;
-              export XSPEC_BUILD_DIR=`ls -d heasoft-*/BUILD_DIR`;
-              pushd $XSPEC_BUILD_DIR;
-              mkdir -p $MYCACHE/xspec-install/;
-              ./configure --prefix=$MYCACHE/xspec-install/ --with-components="Xspec" && make && make install | grep -v hd_install;
-              ls $MYCACHE/xspec-install/x86_64-pc-linux-gnu-libc*/;
-              popd;
-            fi
-      - name: Load heasoft
-        run: |
-            export HEADAS=`ls -d $MYCACHE/xspec-install/x86_64-pc-linux-gnu-libc*/`;
-            echo "HEADAS=$HEADAS" >> $GITHUB_ENV
-            ls $HEADAS;
-            echo "loading xspec from " $HEADAS;
-            source ${HEADAS}/headas-init.sh;
-            echo "PYTHONPATH: $PYTHONPATH";
-            echo "PATH: $PATH";
-            echo "PYTHONPATH=$PYTHONPATH" >> $GITHUB_ENV
-            echo "PATH=$PATH" >> $GITHUB_ENV
-            echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> $GITHUB_ENV
-            python -c 'import xspec' || true;
-
       - name: Check install
         run: |
           python -c "import numpy";
-          python -c "import xspec"
+          python -c "import xspec_models_cxc"
 
       - name: Prepare testing
         run: |
           echo "backend: Agg" > matplotlibrc
 
-      - name: Install run & build dependencies
-        run: uv pip install -r pip-requirements.txt
-
-      #- name: Test with pytest
-      #  run: PYTHONPATH=. coverage3 run -p -m pytest
+      - name: Test with pytest
+        run: PYTHONPATH=. coverage3 run -p -m pytest
 
       #- name: Run simple example
       #  run: PYTHONPATH=. coverage3 run -p simple.py
@@ -120,7 +111,7 @@ jobs:
       #  run: PYTHONPATH=. coverage3 run -p optsimple.py
 
       - name: Install package
-        run: uv pip install .
+        run: pip install .
 
       - name: Coverage report
         run: |
