@@ -6,4 +6,4 @@ tqdm
 ultranest
 h5py
 astropy
-xspec-models-cxc
+xspec_models_cxc
