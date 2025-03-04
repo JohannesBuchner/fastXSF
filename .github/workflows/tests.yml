@@ -92,17 +92,14 @@ jobs:
       - name: Test with pytest
         run: PYTHONPATH=. coverage run -p -m pytest
 
-      #- name: Run simple example
-      #  run: PYTHONPATH=. coverage run -p simple.py
+      - name: Run simple example
+        run: PYTHONPATH=. coverage run -p simple.py
 
-      #- name: Run simple example
-      #  run: PYTHONPATH=. coverage run -p simple.py
+      - name: Run vectorized example
+        run: PYTHONPATH=. coverage run -p simplev.py
 
-      #- name: Run vectorized example
-      #  run: PYTHONPATH=. coverage run -p simplev.py
-
-      #- name: Run optimized nested sampling example
-      #  run: PYTHONPATH=. coverage run -p optsimple.py
+      - name: Run optimized nested sampling example
+        run: PYTHONPATH=. coverage run -p optsimple.py
 
       - name: Install package
         run: pip install .
