@@ -29,8 +29,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
 
-      - name: Install dependencies
-        run: uv pip install -r requirements_dev.txt -r pip-requirements.txt
+      - name: Install dev dependencies
+        run: uv pip install -r requirements_dev.txt
 
       - name: Lint with flake8
         run: flake8 fastxsf
@@ -95,6 +95,9 @@ jobs:
       - name: Prepare testing
         run: |
           echo "backend: Agg" > matplotlibrc
+
+      - name: Install run & build dependencies
+        run: uv pip install -r pip-requirements.txt
 
       #- name: Test with pytest
       #  run: PYTHONPATH=. coverage3 run -p -m pytest
