@@ -1,3 +1,6 @@
+# from https://github.com/dhuppenkothen/clarsach/blob/master/clarsach/respond.py
+# GPL licenced code from the Clàrsach project
+
 # Contains functionality for responses
 
 import numpy as np
@@ -68,7 +71,7 @@ class RMF(object):
             h = hdulist["SPECRESP"]
         else:
             assert False, (extnames, "does not contain MATRIX or SPECRESP")
-        
+
 
         data = h.data
         hdr = h.header
@@ -322,7 +325,7 @@ class RMF(object):
         Extract the redistribution matrix as a dense numpy matrix
 
         The redistribution matrix is saved as a 1-dimensional
-        vector to save space (see apply_rmf for more information). 
+        vector to save space (see apply_rmf for more information).
         This function converts it into a dense array.
 
         Returns
@@ -358,13 +361,13 @@ class RMF(object):
                 # this is the current number of channels to use
 
                 k += 1
-                
+
                 # assign the subarray of the counts array that starts with
                 # counts_idx and runs over current_num_chans channels
-                
+
                 dense_matrix[i,counts_idx:counts_idx + current_num_chans] = \
                        self.matrix[resp_idx:resp_idx + current_num_chans]
-                
+
                 # iterate the response index for next round
                 resp_idx += current_num_chans
 

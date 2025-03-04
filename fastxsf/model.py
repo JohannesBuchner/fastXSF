@@ -139,19 +139,22 @@ class Table:
             energies in keV where spectrum should be computed
         pars: list
             parameter values.
+        vectorized: bool
+            if true, pars is a list of parameter vectors,
+            and the function returns a list of spectra.
 
         Returns
         -------
         spectrum: array
-            spectrum, corresponding to the parameter values, one entry for each value in energies.
-        vectorized: bool
-            <MEANING OF vectorized>
+            photon spectrum, corresponding to the parameter values,
+            one entry for each value in energies in phot/cm^2/s.
         """
         if vectorized:
             z = pars[:, -1]
             e_lo = energies[:-1]
             e_hi = energies[1:]
             e_mid = (e_lo + e_hi) / 2.0
+            delta_e = e_hi - e_lo
             model_int_spectrum = self.interpolator(pars[:, :-1])
             results = np.empty((len(z), len(e_mid)))
             for i, zi in enumerate(z):
@@ -165,11 +168,9 @@ class Table:
                         xp=self.e_model_mid,
                         # use spectral density, which is stretched out if redshifted.
                         fp=model_int_spectrum[i, :]
-                        * self.e_model_mid
                         / self.deltae
                         * (1 + zi),
-                    )
-                    / 24
+                    ) * delta_e / (1 + zi)
                 )
             return results
         else:
@@ -177,6 +178,7 @@ class Table:
             e_lo = energies[:-1]
             e_hi = energies[1:]
             e_mid = (e_lo + e_hi) / 2.0
+            delta_e = e_hi - e_lo
             (model_int_spectrum,) = self.interpolator([pars[:-1]])
             # this model spectrum contains for each bin [e_lo...e_hi] the integral of energy
             # now we have a new energy, energies
@@ -187,9 +189,8 @@ class Table:
                     # in the model spectral grid
                     xp=self.e_model_mid,
                     # use spectral density, which is stretched out if redshifted.
-                    fp=model_int_spectrum * self.e_model_mid / self.deltae * (1 + z),
-                )
-                / 24
+                    fp=model_int_spectrum / self.deltae * (1 + z),
+                ) * delta_e / (1 + z)
             )
 
 
