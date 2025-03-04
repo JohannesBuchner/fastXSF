@@ -1,0 +1,17 @@
+[build-system]
+# Minimum requirements for the build system to execute.
+requires = ["setuptools", "wheel"]  # PEP 508 specifications.
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastxsf"
+version = "1.0.0"
+description = "Fast X-ray spectral fitting"
+readme = "README.rst"
+requires-python = ">=3.8"
+dependencies = ["numpy", "scipy", "scikit-learn", "tqdm", "ultranest", "corner", "matplotlib"]
+license = {file = "LICENSE"}
+authors = [
+    { name = "Johannes Buchner", email = "johannes.buchner.acad@gmx.com" },
+]
+keywords = ["astronomy", "X-ray", "spectroscopy", "spectral fitting", "X-ray spectroscopy", "Bayesian inference", "astrophysics"]

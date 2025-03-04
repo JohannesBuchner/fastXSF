@@ -1,0 +1,68 @@
+name: build
+
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.12]
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      #with:
+      #  python-version: ${{ matrix.python-version }}
+
+    - name: Install the latest version of uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        enable-cache: true
+
+    - name: Install dependencies
+      run: uv pip install -r requirements_dev.txt -r pip-requirements.txt
+
+    - name: Lint with flake8
+      run: flake8 fastxsf
+
+    - name: Check code style
+      run: pycodestyle fastxsf
+
+    - name: Check doc style
+      run: pydocstyle fastxsf
+
+    - name: Test with pytest
+      run: PYTHONPATH=. coverage3 run -p -m pytest
+
+    - name: Run simple example
+      run: PYTHONPATH=. coverage3 run -p simple.py
+
+    - name: Run vectorized example
+      run: PYTHONPATH=. coverage3 run -p simplev.py
+
+    - name: Run optimized nested sampling example
+      run: PYTHONPATH=. coverage3 run -p optsimple.py
+
+    - name: Install package
+      run: uv pip install .
+
+    - name: Coverage report
+      run: |
+        coverage3 combine
+        coverage3 report
+        coverage-lcov
+        # make paths relative
+        sed -i s,$PWD/,,g lcov.info
+
+    - name: Coveralls Finished
+      uses: coverallsapp/github-action@master
+      with:
+        path-to-lcov: lcov.info
+        github-token: ${{ secrets.github_token }}
