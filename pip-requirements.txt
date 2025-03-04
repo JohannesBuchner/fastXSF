@@ -6,4 +6,3 @@ tqdm
 ultranest
 h5py
 astropy
-git+https://github.com/cxcsds/xspec-models-cxc
