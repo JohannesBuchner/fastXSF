@@ -41,6 +41,11 @@ jobs:
       - name: Check doc style
         run: pydocstyle fastxsf
 
+      - name: Set directory names
+        run: |
+          echo "MYCACHE=$HOME/Downloads/xspec" >> $GITHUB_ENV
+          echo "PATH=$PATH:$HOME/.local/bin/" >> $GITHUB_ENV
+
       - name: Cache xspec install
         uses: pat-s/always-upload-cache@v3.0.11
         id: cache-xspec
