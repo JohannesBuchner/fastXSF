@@ -4,7 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from xraystan import load_pha
 
-data = load_pha(sys.argv[1], float(sys.argv[2]), float(sys.argv[3]))
+filename = sys.argv[1]
+elo = float(sys.argv[2])
+ehi = float(sys.argv[3])
+
+data = load_pha(filename, elo, ehi)
 plt.imshow(data['RMF'], cmap='viridis')
 plt.colorbar()
 plt.xlabel('Energy')
