@@ -1,4 +1,4 @@
-"""Statistical and astrophysical models. """
+"""Statistical and astrophysical models."""
 import itertools
 
 import astropy.io.fits as pyfits

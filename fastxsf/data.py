@@ -1,3 +1,4 @@
+"""Functionality for loading data."""
 import os
 from functools import cache
 
@@ -12,6 +13,8 @@ from .response import ARF, RMF
 @cache
 def get_ARF(arf_filename):
     """Read ancillary response file.
+
+    Avoids building a new object for the same file with caching.
 
     Parameters
     ----------
@@ -30,6 +33,8 @@ def get_ARF(arf_filename):
 def get_RMF(rmf_filename):
     """Read response matrix file.
 
+    Avoids building a new object for the same file with caching.
+
     Parameters
     ----------
     rmf_filename: str
@@ -44,8 +49,7 @@ def get_RMF(rmf_filename):
 
 
 def load_pha(filename, elo, ehi, load_absorption=True, z=None):
-    """<summary sentence of function in imperative>.
-
+    """Load PHA file.
 
     Parameters
     ----------
@@ -145,7 +149,7 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
         bkg_model = pyfits.getdata(backfile + "_model.fits", "SPECTRA")
         data["bkg_model_src_region"] = np.array(bkg_model[0]["INTPSPEC"][mask])
         data["bkg_model_bkg_region"] = np.array(bkg_model[1]["INTPSPEC"][mask])
-    if os.path.exists(filename + ".nh"):
+    if os.path.exists(filename + ".nh") and load_absorption:
         data["galnh"] = float(np.loadtxt(filename + ".nh") / 1e22)
     if z is not None:
         data["redshift"] = z

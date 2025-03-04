@@ -1,3 +1,5 @@
+"""Functions for flux and luminosity computations."""
+
 import numpy as np
 from astropy import units as u
 
@@ -40,7 +42,6 @@ def frac_overlap_interval(edges, lo, hi):
 def bins_sum(values, edges, lo, hi):
     """Sum up bin values.
 
-
     Parameters
     ----------
     values: array
@@ -64,7 +65,6 @@ def bins_sum(values, edges, lo, hi):
 
 def bins_integrate1(values, edges, lo, hi):
     """Integrate up bin values.
-
 
     Parameters
     ----------
@@ -90,7 +90,6 @@ def bins_integrate1(values, edges, lo, hi):
 def bins_integrate(values, edges, lo, hi):
     """Integrate up bin values.
 
-
     Parameters
     ----------
     values: array
@@ -113,7 +112,6 @@ def bins_integrate(values, edges, lo, hi):
 def photon_flux(unfolded_model_spectrum, energies, energy_lo, energy_hi):
     """Compute photon flux.
 
-
     Parameters
     ----------
     unfolded_model_spectrum: array
@@ -133,16 +131,12 @@ def photon_flux(unfolded_model_spectrum, energies, energy_lo, energy_hi):
     Nchan = len(energies) - 1
     assert unfolded_model_spectrum.shape == (Nchan,)
     assert energies.shape == (Nchan + 1,)
-    return (
-        bins_integrate(unfolded_model_spectrum, energies, energy_lo, energy_hi)
-        / u.cm**2
-        / u.s
-    )
+    integral = bins_integrate(unfolded_model_spectrum, energies, energy_lo, energy_hi)
+    return integral / u.cm**2 / u.s
 
 
 def energy_flux(unfolded_model_spectrum, energies, energy_lo, energy_hi):
     """Compute energy flux.
-
 
     Parameters
     ----------
@@ -163,19 +157,14 @@ def energy_flux(unfolded_model_spectrum, energies, energy_lo, energy_hi):
     Nchan = len(energies) - 1
     assert unfolded_model_spectrum.shape == (Nchan,)
     assert energies.shape == (Nchan + 1,)
-    return (
-        bins_integrate1(unfolded_model_spectrum, energies, energy_lo, energy_hi)
-        * ((1 * u.keV).to(u.erg))
-        / u.cm**2
-        / u.s
-    )
+    integral1 = bins_integrate1(unfolded_model_spectrum, energies, energy_lo, energy_hi)
+    return integral1 * ((1 * u.keV).to(u.erg)) / u.cm**2 / u.s
 
 
 def luminosity(
     unfolded_model_spectrum, energies, rest_energy_lo, rest_energy_hi, z, cosmo
 ):
     """Compute luminosity.
-
 
     Parameters
     ----------
