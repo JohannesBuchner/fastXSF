@@ -8,13 +8,14 @@ from numpy.testing import assert_allclose
 
 
 def download(url, filename):
+    # download file if it does not exist
     if not os.path.exists(filename):
+        print("downloading", url, "-->", filename)
         response = requests.get(url)
         assert response.status_code == 200
         with open(filename, 'wb') as fout:
             fout.write(response.content)
 
-# download file if it does not exist
 #download('https://zenodo.org/records/1169181/files/uxclumpy-cutoff.fits?download=1', 'uxclumpy-cutoff.fits')
 #download('https://zenodo.org/records/2235505/files/wada-cutoff.fits?download=1', 'wada-cutoff.fits')
 #download('https://zenodo.org/records/2235457/files/blob_uniform.fits?download=1', 'blob_uniform.fits')
@@ -23,7 +24,7 @@ download('https://zenodo.org/records/2224472/files/diskreflect.fits?download=1',
 
 
 def test_disk_table():
-    energies = np.logspace(-0.5, 2, 400)
+    energies = np.logspace(-0.5, 2, 1000)
     e_lo = energies[:-1]
     e_hi = energies[1:]
     e_mid = (e_lo + e_hi) / 2.0
@@ -53,6 +54,31 @@ def test_disk_table():
         mask = np.logical_and(energies[:-1] > 8 / (1 + z), energies[:-1] < 80 / (1 + z))
         assert_allclose(A[mask], B[mask], rtol=0.1)
 
+def test_pexpl_table():
+    energies = np.logspace(-0.5, 2, 1000)
+    e_lo = energies[:-1]
+    e_hi = energies[1:]
+    e_mid = (e_lo + e_hi) / 2.0
+    deltae = e_hi - e_lo
+    Ecut = 1000
+    Incl = 70
+    PhoIndex = 2.0
+    ZHe = 1
+    ZFe = 1
+    for PhoIndex in 2.8, 2.0, 1.2:
+        for z in 0, 1, 2:
+            A = fastxsf.x.zpowerlw(energies=energies, pars=[PhoIndex, z])
+            B = fastxsf.x.pexmon(energies=energies, pars=[PhoIndex, Ecut, 0, z, ZHe, ZFe, Incl]) / (1 + z)**2
+            l, = plt.plot(e_mid * (1 + z), A / deltae, label="atable")
+            plt.plot(e_mid * (1 + z), B / deltae / (1 + z)**(PhoIndex - 2), label="pexmon", ls=':', color=l.get_color())
+            plt.xlabel("Energy [keV]")
+            plt.ylabel("Spectrum [photons/cm$^2$/s]")
+            plt.yscale("log")
+            plt.xscale("log")
+            plt.legend()
+            plt.savefig("pexmonpl.pdf")
+            assert_allclose(A, B / (1 + z)**(PhoIndex - 2), rtol=0.2, atol=1e-4)
+
 def test_absorber_table():
     fastxsf.x.abundance("angr")
     fastxsf.x.cross_section("bcmc")
@@ -76,22 +102,11 @@ def test_absorber_table():
             B = fastxsf.x.zpowerlw(energies=energies, pars=[PhoIndex, z])
             C = B * fastxsf.x.zphabs(energies=energies, pars=[NH22, z])
             mask = np.logical_and(energies[:-1] > elo / (1 + z), energies[:-1] / (1 + z) < 80)
-            #print('A:', np.abs(np.diff(np.log10(C / deltae))))
-            #print('B:', np.diff(np.log10(e_mid)))
-            #print('C:', np.abs(np.diff(np.log10(C / deltae)) / np.diff(np.log10(e_mid))))
-            #for ai in np.where(np.abs(np.diff(np.log10(C / deltae))) > 20)[0]:
-            #    mask[np.abs(np.log10(energies[:-1] / energies[ai])) < 0.1] = False
-            #for ai in np.where(np.diff(np.log10(A / deltae) / np.log10(deltae)) > 0.03)[0]:
-            #    mask[np.abs(np.log10(energies[:-1] / energies[ai])) < 0.1] = False
-            #for ai in np.where(np.diff(np.log10(A)) > 0.2)[0]:
-            #    mask[ai - 3: ai + 4] = False
             mask[np.abs(energies[:-1] - 6.4 / (1 + z)) < 0.1] = False
             plt.plot(e_mid, A / deltae, label="atable", ls='--', color='k', lw=0.5)
-            #plt.plot(e_mid, C / deltae, label="pl*tbabs", ls=':')
             A[~mask] = np.nan
             B[~mask] = np.nan
             C[~mask] = np.nan
-            #print(energies[:-1][mask][np.argmax(np.log10(A[mask] / C[mask]))])
             plt.plot(e_mid, A / deltae, label="atable", color='k')
             plt.plot(e_mid, B / deltae, label="pl", ls="--", color='orange', lw=0.5)
             plt.plot(e_mid, C / deltae, label="pl*tbabs", color='r', lw=1)
