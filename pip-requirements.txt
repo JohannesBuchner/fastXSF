@@ -5,3 +5,4 @@ optns
 tqdm
 ultranest
 h5py
+astropy
