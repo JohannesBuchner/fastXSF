@@ -58,7 +58,7 @@ jobs:
           pip install git+https://github.com/JohannesBuchner/coverage-lcov &&
           sudo sed -i '/PDF/s/none/read|write/' /etc/ImageMagick-6/policy.xml &&
           pip uninstall -y h5py &&
-          pip install --no-cache-dir h5py
+          pip install --no-cache-dir h5py git+https://github.com/cxcsds/xspec-models-cxc
 
       - name: Conda info
         run: micromamba info
