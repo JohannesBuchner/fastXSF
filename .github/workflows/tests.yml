@@ -23,7 +23,7 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get -y --no-install-recommends install -y ghostscript
 
-      - uses: mamba-org/setup-micromamba
+      - uses: mamba-org/setup-micromamba@v1
         with:
           environment-name: test
           cache-environment: false
