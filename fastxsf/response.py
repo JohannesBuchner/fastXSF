@@ -1,19 +1,26 @@
+"""Functionality for linear instrument response."""
 # from https://github.com/dhuppenkothen/clarsach/blob/master/clarsach/respond.py
 # GPL licenced code from the Clàrsach project
 
-# Contains functionality for responses
-
-import numpy as np
 import astropy.io.fits as fits
+import numpy as np
 
 __all__ = ["RMF", "ARF"]
 
+
 class RMF(object):
+    """Response matrix file."""
 
     def __init__(self, filename):
+        """
+        Initialise.
 
+        Parameters
+        ----------
+        filename : str
+            The file name with the RMF FITS file
+        """
         self._load_rmf(filename)
-        pass
 
     def _load_rmf(self, filename):
         """
@@ -70,8 +77,7 @@ class RMF(object):
         elif "SPECRESP" in extnames:
             h = hdulist["SPECRESP"]
         else:
-            assert False, (extnames, "does not contain MATRIX or SPECRESP")
-
+            raise AssertionError(f"{extnames} does not contain MATRIX or SPECRESP")
 
         data = h.data
         hdr = h.header
@@ -90,10 +96,8 @@ class RMF(object):
         self.offset = self.__get_tlmin(h)
 
         # flatten the variable-length arrays
-        self.n_grp, self.f_chan, self.n_chan, self.matrix = \
-                self._flatten_arrays(n_grp, f_chan, n_chan, matrix)
-
-        return
+        results = self._flatten_arrays(n_grp, f_chan, n_chan, matrix)
+        self.n_grp, self.f_chan, self.n_chan, self.matrix = results
 
     def __get_tlmin(self, h):
         """
@@ -137,8 +141,8 @@ class RMF(object):
         matrix_flat = np.hstack(matrix[nz_idx], dtype=float)
 
         # stack all nonzero rows in n_chan and f_chan
-        #n_chan_flat = np.hstack(n_chan[nz_idx])
-        #f_chan_flat = np.hstack(f_chan[nz_idx])
+        # n_chan_flat = np.hstack(n_chan[nz_idx])
+        # f_chan_flat = np.hstack(f_chan[nz_idx])
 
         # some matrices actually have more elements
         # than groups in `n_grp`, so we'll only pick out
@@ -231,17 +235,18 @@ class RMF(object):
             current_num_groups = self.n_grp[i]
 
             # loop over the current number of groups
-            for current_num_chans, counts_idx in zip(self.n_chan[k:k+current_num_groups], self.f_chan[k:k+current_num_groups]):
+            for current_num_chans, counts_idx in zip(
+                self.n_chan[k:k + current_num_groups],
+                self.f_chan[k:k + current_num_groups]
+            ):
                 # add the flux to the subarray of the counts array that starts with
                 # counts_idx and runs over current_num_chans channels
-                counts[counts_idx:counts_idx +
-                                  current_num_chans] += self.matrix[resp_idx:resp_idx +
-                                                                             current_num_chans] * \
-                                                            source_bin_i
+                outslice = slice(counts_idx, counts_idx + current_num_chans)
+                inslice = slice(resp_idx, resp_idx + current_num_chans)
+                counts[outslice] += self.matrix[inslice] * source_bin_i
                 # iterate the response index for next round
                 resp_idx += current_num_chans
             k += current_num_groups
-
 
         return counts[:self.detchans]
 
@@ -307,7 +312,10 @@ class RMF(object):
             current_num_groups = self.n_grp[i]
 
             # loop over the current number of groups
-            for current_num_chans, counts_idx in zip(self.n_chan[k:k+current_num_groups], self.f_chan[k:k+current_num_groups]):
+            for current_num_chans, counts_idx in zip(
+                self.n_chan[k:k + current_num_groups],
+                self.f_chan[k:k + current_num_groups]
+            ):
                 # add the flux to the subarray of the counts array that starts with
                 # counts_idx and runs over current_num_chans channels
                 to_add = np.outer(source_bin_i, self.matrix[resp_idx:resp_idx + current_num_chans])
@@ -317,12 +325,10 @@ class RMF(object):
                 resp_idx += current_num_chans
             k += current_num_groups
 
-
         return counts[:,:self.detchans]
 
     def get_dense_matrix(self):
-        """
-        Extract the redistribution matrix as a dense numpy matrix
+        """Extract the redistribution matrix as a dense numpy matrix.
 
         The redistribution matrix is saved as a 1-dimensional
         vector to save space (see apply_rmf for more information).
@@ -332,7 +338,6 @@ class RMF(object):
         -------
         dense_matrix : numpy.ndarray
             The RMF as a dense 2d matrix.
-
         """
         # get the number of channels in the data
         nchannels = len(self.energ_lo)
@@ -353,7 +358,7 @@ class RMF(object):
             current_num_groups = self.n_grp[i]
 
             # loop over the current number of groups
-            for j in range(current_num_groups):
+            for _ in range(current_num_groups):
                 current_num_chans = int(self.n_chan[k])
                 # get the right index for the start of the counts array
                 # to put the data into
@@ -365,8 +370,9 @@ class RMF(object):
                 # assign the subarray of the counts array that starts with
                 # counts_idx and runs over current_num_chans channels
 
-                dense_matrix[i,counts_idx:counts_idx + current_num_chans] = \
-                       self.matrix[resp_idx:resp_idx + current_num_chans]
+                outslice = slice(counts_idx, counts_idx + current_num_chans)
+                inslice = slice(resp_idx, resp_idx + current_num_chans)
+                dense_matrix[i,outslice] = self.matrix[inslice]
 
                 # iterate the response index for next round
                 resp_idx += current_num_chans
@@ -375,24 +381,26 @@ class RMF(object):
 
 
 class ARF(object):
+    """Area response file."""
 
     def __init__(self, filename):
-
-        self._load_arf(filename)
-        pass
-
-    def _load_arf(self, filename):
-        """
-        Load an ARF from a FITS file.
+        """Initialise.
 
         Parameters
         ----------
         filename : str
-            The file name with the RMF file
+            The file name with the ARF file
+        """
+        self._load_arf(filename)
+        pass
 
-        Attributes
+    def _load_arf(self, filename):
+        """Load an ARF from a FITS file.
+
+        Parameters
         ----------
-
+        filename : str
+            The file name with the ARF file
         """
         # open the FITS file and extract the MATRIX extension
         # which contains the redistribution matrix and
@@ -405,7 +413,7 @@ class ARF(object):
 
         # extract + store the attributes described in the docstring
 
-        self.e_low  = np.array(data.field("ENERG_LO"))
+        self.e_low = np.array(data.field("ENERG_LO"))
         self.e_high = np.array(data.field("ENERG_HI"))
         self.e_unit = data.columns["ENERG_LO"].unit
         self.specresp = np.array(data.field("SPECRESP"))
@@ -419,8 +427,6 @@ class ARF(object):
             self.fracexpo = data["FRACEXPO"]
         else:
             self.fracexpo = 1.0
-
-        return
 
     def apply_arf(self, spec, exposure=None):
         """
@@ -448,12 +454,9 @@ class ARF(object):
         s_arf : numpy.ndarray
             The (model) spectrum after folding, in
             counts/s/channel
-
         """
-        assert spec.shape[0] == self.specresp.shape[0], "The input spectrum must " \
-                                                      "be of same size as the " \
-                                                      "ARF array."
-        if exposure is None:
-            return np.array(spec) * self.specresp * self.exposure
-        else:
-            return np.array(spec) * self.specresp * exposure
+        assert spec.shape[0] == self.specresp.shape[0], (
+            "Input spectrum and ARF must be of same size.",
+            spec.shape, self.specresp.shape)
+        e = self.exposure if exposure is None else exposure
+        return np.array(spec) * self.specresp * e

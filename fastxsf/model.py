@@ -1,3 +1,4 @@
+"""Statistical and astrophysical models. """
 import itertools
 
 import astropy.io.fits as pyfits
@@ -5,13 +6,14 @@ import numpy as np
 import tqdm
 import xspec_models_cxc as x
 from scipy.interpolate import RegularGridInterpolator
+
 from joblib import Memory
 
 mem = Memory('.', verbose=False)
 
+
 def logPoissonPDF_vectorized(models, counts):
     """Compute poisson probability.
-
 
     Parameters
     ----------
@@ -29,9 +31,9 @@ def logPoissonPDF_vectorized(models, counts):
     log_models = np.log(np.clip(models, 1e-100, None))
     return np.sum(log_models * counts.reshape((1, -1)), axis=1) - models.sum(axis=1)
 
+
 def logPoissonPDF(model, counts):
     """Compute poisson probability.
-
 
     Parameters
     ----------
@@ -50,22 +52,22 @@ def logPoissonPDF(model, counts):
 
 
 def xvec(model, energies, pars):
-    """<summary sentence of function in imperative>.
-
+    """Evaluate a model in a vectorized way.
 
     Parameters
     ----------
-    model: <TYPE>
-        <MEANING OF model>
-    energies: <TYPE>
-        <MEANING OF energies>
-    pars: <TYPE>
-        <MEANING OF pars>
+    model: object
+        xspec model (from fastxsf.x module, which is xspec_models_cxc)
+    energies: array
+        energies in keV where to evaluate model
+    pars: array
+        list of parameter vectors
 
     Returns
     -------
-    results: <TYPE>
-        <MEANING OF results>
+    results: array
+        for each parameter vector in pars, evaluates the model
+        at the given energies. Has shape (pars.shape[0], energies.shape[0])
     """
     results = np.empty((len(pars), len(energies) - 1))
     for i, pars_i in enumerate(pars):
@@ -75,20 +77,36 @@ def xvec(model, energies, pars):
 
 @mem.cache
 def check_if_sorted(param_vals, parameter_grid):
+    """Check if parameters are stored in a sorted way.
+
+    Parameters
+    ----------
+    param_vals: array
+        list of parameter values stored
+    parameter_grid: array
+        list of possible values for each parameter
+
+    Returns
+    -------
+    sorted: bool
+        True if param_vals==itertools.product(*parameter_grid)
+    """
     for i, params in enumerate(itertools.product(*parameter_grid)):
         if not np.all(param_vals[i] == params):
             return False
     return True
-    
+
 
 class Table:
+    """Additive or multiplicative table model."""
+
     def __init__(self, filename, method="linear"):
-        """Create OGIP table.
+        """Initialise.
 
         Parameters
         ----------
         filename: str
-            filename
+            filename of a OGIP FITS file.
         method: str
             interpolation kind, passed to RegularGridInterpolator
         """
@@ -167,9 +185,7 @@ class Table:
                         # in the model spectral grid
                         xp=self.e_model_mid,
                         # use spectral density, which is stretched out if redshifted.
-                        fp=model_int_spectrum[i, :]
-                        / self.deltae
-                        * (1 + zi),
+                        fp=model_int_spectrum[i, :] / self.deltae * (1 + zi),
                     ) * delta_e / (1 + zi)
                 )
             return results
@@ -192,56 +208,3 @@ class Table:
                     fp=model_int_spectrum / self.deltae * (1 + z),
                 ) * delta_e / (1 + z)
             )
-
-
-if __name__ == "__main__":
-    import sys
-
-    import matplotlib.pyplot as plt
-
-    x.abundance("wilm")
-    x.cross_section("vern")
-    energies = np.logspace(-0.5, 1, 100)
-    e_lo = energies[:-1]
-    e_hi = energies[1:]
-    e_mid = (e_lo + e_hi) / 2.0
-    atable = Table("/home/user/Downloads/specmodels/diskreflect.fits")
-    z = 1.0
-    Ecut = 400
-    PhoIndex = 2.0
-    Incl = 87
-    plt.plot(e_mid, 2 * atable(energies, [PhoIndex, Ecut, Incl, z]), label="atable")
-    plt.plot(
-        e_mid,
-        x.pexmon(energies=energies, pars=[PhoIndex, Ecut, -1, z, 1, 1, Incl]),
-        label="pexmon",
-    )
-    plt.xlabel("Energy [keV]")
-    plt.ylabel("Spectrum [photons/cm$^2$/s]")
-    plt.yscale("log")
-    plt.xscale("log")
-    plt.legend()
-    plt.savefig("pexmon.pdf")
-    plt.close()
-
-    atable = Table("/home/user/Downloads/specmodels/uxclumpy-cutoff.fits")
-    NH22 = 0.5
-    plt.plot(
-        e_mid,
-        atable(energies, [NH22, PhoIndex, Ecut, 28.0, 0.1, 45, z]),
-        label="atable",
-    )
-    plt.plot(e_mid, x.powerlaw(energies=energies, pars=[PhoIndex]), label="pl", ls="--")
-    plt.plot(
-        e_mid,
-        x.powerlaw(energies=energies, pars=[PhoIndex])
-        * x.TBabs(energies=energies, pars=[NH22]),
-        label="pl*tbabs",
-    )
-    plt.xlabel("Energy [keV]")
-    plt.ylabel("Spectrum [photons/cm$^2$/s]")
-    plt.ylim(1e-7, 1)
-    plt.yscale("log")
-    plt.xscale("log")
-    plt.legend()
-    plt.savefig("abspl.pdf")

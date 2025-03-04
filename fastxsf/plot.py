@@ -1,7 +1,8 @@
-from xraystan import load_pha
-import numpy as np
-import matplotlib.pyplot as plt
 import sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+from xraystan import load_pha
 
 data = load_pha(sys.argv[1], float(sys.argv[2]), float(sys.argv[3]))
 plt.imshow(data['RMF'], cmap='viridis')

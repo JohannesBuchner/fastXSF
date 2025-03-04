@@ -58,7 +58,7 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
     load_absorption: bool
         whether to try to load the <filename>.nh file
     z: float or None
-        if given, set data['redshift'] to z. 
+        if given, set data['redshift'] to z.
         Otherwise try to load the <filename>.z file.
 
     Returns
