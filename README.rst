@@ -106,11 +106,14 @@ Todo
 * ✓ There is a python loop in fastxsf/model.py::Table.__call__ which should be replaced with something smarter
 * ✓ Compute fluxes and luminosities.
 * ✓ Create some unit tests for loading and evaluating atables/mtables, poisson probability, plotting ARF/RMF.
-* Make a atable that is precomputed for a given rest-frame energy grid at fixed redshift.
-* Make a automatic emulator.
+* ✓ Make a atable that is precomputed for a given rest-frame energy grid at fixed redshift. -> FixedTable
 
 Credits
 --------
 
 This builds upon work by the Chandra X-ray Center (in particular Doug Burke's wrapper),
 and Daniela Huppenkothen's RMF/ARF reader (based in turn on sherpa code, IIRC).
+
+License: GPL v3
+
+Contributions are welcome.
