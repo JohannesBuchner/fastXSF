@@ -1,5 +1,10 @@
+import os
+
 import numpy as np
+import scipy.stats
+import ultranest
 from matplotlib import pyplot as plt
+
 import fastxsf
 
 # fastxsf.x.chatter(0)
@@ -13,17 +18,18 @@ data = fastxsf.load_pha('example/179.pi', 0.5, 8)
 e_lo = data['e_lo']
 e_hi = data['e_hi']
 e_mid = (data['e_hi'] + data['e_lo']) / 2.
-e_width= (data['e_hi'] - data['e_lo'])
+e_width = data['e_hi'] - data['e_lo']
 energies = np.append(e_lo, e_hi[-1])
 RMF_src = data['RMF_src']
 
 chan_e = (data['chan_e_min'] + data['chan_e_max']) / 2.
 
 # load a Table model
-absAGN = fastxsf.Table(os.path.join(os.environ['MODELDIR'], 'uxclumpy-cutoff.fits'))
+absAGN = fastxsf.Table(os.path.join(os.environ.get('MODELDIR', '.'), 'uxclumpy-cutoff.fits'))
 
 # pre-compute the absorption factors -- no need to call this again and again if the parameters do not change!
 galabso = fastxsf.x.TBabs(energies=energies, pars=[data['galnh']])
+
 
 # define a likelihood
 def loglikelihood(params, plot=False):
@@ -35,14 +41,14 @@ def loglikelihood(params, plot=False):
     abs_component = absAGN(energies=energies, pars=np.transpose([NH22, PhoIndex, Ecut, TORsigma, CTKcover, Incl, z]), vectorized=True)
 
     scat_component = fastxsf.xvec(fastxsf.x.zpowerlw, energies=energies, pars=np.transpose([norm, PhoIndex]))
-    
+
     pred_spec = np.einsum('ij,i->ij', abs_component, norm) + np.einsum('ij,i->ij', scat_component, scat_norm)
 
     pred_counts_src_srcreg = RMF_src.apply_rmf_vectorized(np.einsum('i,i,ji->ji', data['ARF'], galabso, pred_spec))[:,data['chan_mask']] * data['src_expoarea']
     pred_counts_bkg_srcreg = np.einsum('j,i->ij', data['bkg_model_src_region'], bkg_norm) * data['src_expoarea']
     pred_counts_srcreg = pred_counts_src_srcreg + pred_counts_bkg_srcreg
     pred_counts_bkg_bkgreg = np.einsum('j,i->ij', data['bkg_model_bkg_region'], bkg_norm) * data['bkg_expoarea']
-    
+
     if plot:
         print(params[0])
         plt.figure()
@@ -71,6 +77,7 @@ def loglikelihood(params, plot=False):
     # combined the probabilities. If fitting multiple spectra, you would add them up here as well
     return like_srcreg + like_bkgreg
 
+
 # compute a likelihood:
 z = np.array([data['redshift']] * 2)
 bkg_norm = np.array([1.0] * 2)
@@ -80,14 +87,14 @@ PhoIndex = np.array([1.9, 2.0])
 TORsigma = np.array([28.0] * 2)
 CTKcover = np.array([0.1] * 2)
 NH22 = np.array([1.0] * 2)
-print(loglikelihood(np.transpose([norm, NH22, np.array([0.08]*2), PhoIndex, TORsigma, CTKcover, z, bkg_norm]), plot=True))
+print(loglikelihood(np.transpose([norm, NH22, np.array([0.08] * 2), PhoIndex, TORsigma, CTKcover, z, bkg_norm]), plot=True))
 
 # lets define a prior
 
-import scipy.stats
 PhoIndex_gauss = scipy.stats.norm(1.95, 0.15)
 # we are cool, we can let redshift be a free parameter informed from photo-z
 z_gauss = scipy.stats.norm(data['redshift'], 0.05)
+
 
 # define the prior transform function
 def prior_transform(cube):
@@ -108,12 +115,13 @@ def prior_transform(cube):
     params[:,7] = 10**(cube[:,7] * (1 - -1) + -1)
     return params
 
+
 # define parameter names
 param_names = ['norm', 'logNH22', 'scatnorm', 'PhoIndex', 'TORsigma', 'CTKcover', 'redshift', 'bkg_norm']
-from ultranest import ReactiveNestedSampler
+
 
 # run sampler
-sampler = ReactiveNestedSampler(
+sampler = ultranest.ReactiveNestedSampler(
     param_names, loglikelihood, prior_transform,
     log_dir='simplev', resume=True,
     vectorized=True)

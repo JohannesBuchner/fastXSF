@@ -1,9 +1,10 @@
-import numpy as np
-from matplotlib import pyplot as plt
-import fastxsf
-from optns.sampler import OptNS
-import scipy.stats
 import corner
+import numpy as np
+import scipy.stats
+from matplotlib import pyplot as plt
+from optns.sampler import OptNS
+
+import fastxsf
 
 # fastxsf.x.chatter(0)
 fastxsf.x.abundance('wilm')
@@ -16,15 +17,11 @@ data = fastxsf.load_pha('example/179.pi', 0.5, 8)
 e_lo = data['e_lo']
 e_hi = data['e_hi']
 e_mid = (data['e_hi'] + data['e_lo']) / 2.
-e_width= (data['e_hi'] - data['e_lo'])
+e_width = data['e_hi'] - data['e_lo']
 energies = np.append(e_lo, e_hi[-1])
 RMF_src = data['RMF_src']
 
 chan_e = (data['chan_e_min'] + data['chan_e_max']) / 2.
-
-# load a convolution model
-#absAGN = fastxsf.diskline(energies=energies, pars=[Eline, emissivityPL, Rin, Rout, incl])
-#absAGN = fastxsf.x.TBabs(energies=energies, pars=[NH])
 
 # pre-compute the absorption factors -- no need to call this again and again if the parameters do not change!
 galabso = fastxsf.x.TBabs(energies=energies, pars=[data['galnh']])
@@ -50,21 +47,23 @@ counts_flat = np.hstack((data['src_region_counts'], data['bkg_region_counts']))
 # set up function which computes the various model components:
 # the parameters are:
 nonlinear_param_names = ['logNH', 'PhoIndex', 'emissPL', 'Rin', 'Rout', 'incl']
+
+
 def compute_model_components(params):
     logNH, PhoIndex, emissivityPL, Rin, Rout, incl = params
     # first component: a absorbed power law
     pl = fastxsf.x.zpowerlw(energies=energies, pars=[PhoIndex, z])
-    abso = fastxsf.x.zTBabs(energies=energies, pars=[10**(logNH-22), z])
+    abso = fastxsf.x.zTBabs(energies=energies, pars=[10**(logNH - 22), z])
     plabso = pl * abso
     # second component, a disk reflection
-    Eline = 6.4 # keV
+    Eline = 6.4  # keV
     refl = fastxsf.x.diskline(energies=energies, pars=[Eline, emissivityPL, Rin, Rout, incl])
     # third component, a copy of the unabsorbed power law
     scat = pl
     assert (pl >= 0).all()
     assert (plabso >= 0).all()
     assert (refl >= 0).all()
-    
+
     # now we need to project all of our components through the response.
     src_components = data['ARF'] * galabso * np.array([plabso, refl, scat])
     pred_counts_src_srcreg = RMF_src.apply_rmf_vectorized(src_components)[:,data['chan_mask']] * data['src_expoarea']
@@ -82,11 +81,13 @@ def compute_model_components(params):
     assert (pred_counts[1] > 0).any(), (params, refl)
     assert (pred_counts[2] > 0).any(), (params, pl)
     assert (pred_counts[3] > 0).any(), (params,)
-    
+
     return pred_counts.T
+
 
 # set up a prior transform for these nonlinear parameters
 PhoIndex_gauss = scipy.stats.norm(1.95, 0.15)
+
 
 def nonlinear_param_transform(cube):
     params = cube.copy()
@@ -98,18 +99,21 @@ def nonlinear_param_transform(cube):
     params[5] = np.arccos(cube[5]) * 180 / np.pi  # inclination from 0 to 90 degrees
     return params
 
+
 # now for the linear (normalisation) parameters:
 linear_param_names = ['Nsrc', 'Nrefl', 'Nscat', 'Nbkg']
 # set up a prior log-probability density function for these linear parameters:
+
+
 def linear_param_logprior(params):
     assert np.all(params > 0)
     Nsrc, Nrefl, Nscat, Nbkg = params.transpose()
     # a log-uniform prior on the source luminosity
     logp = -np.log(Nsrc)
     # a log-uniform prior on the relative scattering normalisation.
-    #logp += -np.log(Nscat / Nsrc)
+    # logp += -np.log(Nscat / Nsrc)
     # a log-uniform prior on the relative reflection normalisation.
-    #logp += -np.log(Nrefl / Nsrc)
+    # logp += -np.log(Nrefl / Nsrc)
     assert np.isfinite(logp).all(), logp
     # limits:
     logp[Nscat > 0.1 * Nsrc] = -np.inf
@@ -117,19 +121,18 @@ def linear_param_logprior(params):
     logp[Nrefl < Nsrc / 300] = -np.inf
     return logp
 
+
 # create OptNS object, and give it all of these ingredients,
 # as well as our data
 statmodel = OptNS(
     linear_param_names, nonlinear_param_names, compute_model_components,
-        nonlinear_param_transform, linear_param_logprior,
-        counts_flat, positive=True)
+    nonlinear_param_transform, linear_param_logprior,
+    counts_flat, positive=True)
 
 # prior predictive checks:
 fig = plt.figure(figsize=(15, 4))
 statmodel.prior_predictive_check_plot(fig.gca())
 plt.legend()
-#plt.xlim(0, 100)
-#plt.ylim(0.1, 100)
 plt.ylim(0.1, counts_flat.max() * 1.1)
 plt.yscale('log')
 plt.savefig('optrefl-ppc.pdf')
@@ -164,7 +167,7 @@ fig = corner.corner(
     contour_kwargs=dict(linestyles=['-','-.',':','--'], colors=['navy','navy','navy','purple']),
     color='purple'
 )
-plt.savefig(f'optrefl-corner.pdf')
+plt.savefig('optrefl-corner.pdf')
 plt.close()
 
 # to obtain equally weighted samples, we resample
@@ -177,9 +180,6 @@ print(f'Obtained {len(samples)} equally weighted posterior samples')
 # prior predictive checks:
 fig = plt.figure(figsize=(15, 10))
 statmodel.posterior_predictive_check_plot(fig.gca(), samples[:100])
-#plt.plot(counts_flat, 'o ', ms=2, mfc='none', mec='k')
-#for y_pred in y_pred_samples[::100]:
-#    plt.plot(y_pred, alpha=0.3, color='k', lw=1)
 plt.legend()
 plt.ylim(0.1, counts_flat.max() * 1.1)
 plt.yscale('log')

@@ -1,5 +1,9 @@
+import os
+
 import numpy as np
+import scipy.stats
 from matplotlib import pyplot as plt
+
 import fastxsf
 
 # fastxsf.x.chatter(0)
@@ -13,14 +17,14 @@ data = fastxsf.load_pha('example/179.pi', 0.5, 8)
 e_lo = data['e_lo']
 e_hi = data['e_hi']
 e_mid = (data['e_hi'] + data['e_lo']) / 2.
-e_width= (data['e_hi'] - data['e_lo'])
+e_width = data['e_hi'] - data['e_lo']
 energies = np.append(e_lo, e_hi[-1])
 RMF_src = data['RMF_src']
 
 chan_e = (data['chan_e_min'] + data['chan_e_max']) / 2.
 
 # load a Table model
-absAGN = fastxsf.Table(os.path.join(os.environ['MODELDIR'], 'uxclumpy-cutoff.fits'))
+absAGN = fastxsf.Table(os.path.join(os.environ.get('MODELDIR', '.'), 'uxclumpy-cutoff.fits'))
 
 # pre-compute the absorption factors -- no need to call this again and again if the parameters do not change!
 galabso = fastxsf.x.TBabs(energies=energies, pars=[data['galnh']])
@@ -54,7 +58,7 @@ def loglikelihood(params, plot=False):
     pred_counts_bkg_srcreg = data['bkg_model_src_region'] * bkg_norm * data['src_expoarea']
     pred_counts_srcreg = pred_counts_src_srcreg + pred_counts_bkg_srcreg
     pred_counts_bkg_bkgreg = data['bkg_model_bkg_region'] * bkg_norm * data['bkg_expoarea']
-    
+
     if plot:
         plt.figure()
         plt.legend()
@@ -82,10 +86,10 @@ def loglikelihood(params, plot=False):
     like_bkgreg = fastxsf.logPoissonPDF(pred_counts_bkg_bkgreg, data['bkg_region_counts'])
     return like_srcreg + like_bkgreg
 
-# lets define a prior
 
-import scipy.stats
+# lets define a prior
 PhoIndex_gauss = scipy.stats.norm(1.95, 0.15)
+
 
 # define the prior transform function
 def prior_transform(cube):
@@ -105,6 +109,7 @@ def prior_transform(cube):
     # log-uniform prior on the background normalisation between 0.1 and 10
     params[8] = 10**(cube[8] * (1 - -1) + -1)
     return params
+
 
 # compute a likelihood:
 print(loglikelihood((norm, NH22, 0.08, PhoIndex, TORsigma, CTKcover, Incl, Ecut, bkg_norm), plot=True))
