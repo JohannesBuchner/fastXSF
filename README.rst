@@ -3,6 +3,19 @@ FastXSF
 
 Fast X-ray spectral fitting.
 
+.. image:: https://img.shields.io/pypi/v/fastxsf.svg
+        :target: https://pypi.python.org/pypi/fastxsf
+
+.. image:: https://github.com/JohannesBuchner/fastxsf/actions/workflows/tests.yml/badge.svg
+        :target: https://github.com/JohannesBuchner/fastxsf/actions/workflows/tests.yml
+
+.. image:: https://coveralls.io/repos/github/JohannesBuchner/fastxsf/badge.svg?branch=main
+	:target: https://coveralls.io/github/JohannesBuchner/fastxsf?branch=main
+
+.. image:: https://img.shields.io/badge/GitHub-JohannesBuchner%2Ffastxsf-blue.svg?style=flat
+        :target: https://github.com/JohannesBuchner/fastxsf/
+        :alt: Github repository
+
 Background
 ----------
 

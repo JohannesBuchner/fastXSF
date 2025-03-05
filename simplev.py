@@ -125,6 +125,12 @@ sampler = ultranest.ReactiveNestedSampler(
     param_names, loglikelihood, prior_transform,
     log_dir='simplev', resume=True,
     vectorized=True)
-results = sampler.run(max_num_improvement_loops=0, frac_remain=0.5)
-loglikelihood(results['samples'][:10,:], plot=True)
-sampler.plot()
+
+# then to run:
+# results = sampler.run(max_num_improvement_loops=0, frac_remain=0.5)
+
+# and to plot a model:
+# loglikelihood(results['samples'][:10,:], plot=True)
+
+# and to plot the posterior corner plot:
+# sampler.plot()
