@@ -6,11 +6,14 @@ import requests
 import matplotlib.pyplot as plt
 from numpy.testing import assert_allclose
 
+def get_fullfilename(filename, modeldir = os.environ.get('MODELDIR', '.')):
+    return os.path.join(modeldir, filename)
 
 def download(url, filename):
     # download file if it does not exist
-    if not os.path.exists(filename):
-        print("downloading", url, "-->", filename)
+    fullfilename = get_fullfilename(filename)
+    if not os.path.exists(fullfilename):
+        print("downloading", url, "-->", fullfilename)
         response = requests.get(url)
         assert response.status_code == 200
         with open(filename, 'wb') as fout:
@@ -33,14 +36,14 @@ def test_disk_table():
     fastxsf.x.abundance("angr")
     fastxsf.x.cross_section("vern")
     # compare diskreflect to pexmon
-    atable = Table("diskreflect.fits")
+    atable = Table(get_fullfilename("diskreflect.fits"))
     Ecut = 400
     Incl = 70
     PhoIndex = 2.0
     ZHe = 1
     ZFe = 1
     for z in 0.0, 1.0, 2.0, 4.0:
-        ftable = FixedTable("diskreflect.fits", energies, redshift=z)
+        ftable = FixedTable(get_fullfilename("diskreflect.fits"), energies, redshift=z)
         A = atable(energies, [PhoIndex, Ecut, Incl, z])
         B = fastxsf.x.pexmon(energies=energies, pars=[PhoIndex, Ecut, -1, z, ZHe, ZFe, Incl]) / (1 + z)**2 / 2
         C = ftable(energies, [PhoIndex, Ecut, Incl])
@@ -67,7 +70,7 @@ def test_pexpl_table():
     Incl = 70
     ZHe = 1
     ZFe = 1
-    for PhoIndex in 2.8, 2.0, 1.2:
+    for PhoIndex in 2.4, 2.0, 1.2:
         for z in 0, 1, 2:
             A = fastxsf.x.zpowerlw(energies=energies, pars=[PhoIndex, z])
             B = fastxsf.x.pexmon(energies=energies, pars=[PhoIndex, Ecut, 0, z, ZHe, ZFe, Incl]) / (1 + z)**2
@@ -85,7 +88,7 @@ def test_absorber_table():
     fastxsf.x.abundance("angr")
     fastxsf.x.cross_section("bcmc")
     # compare uxclumpy to ztbabs * zpowerlw
-    atable = Table("wedge.fits")
+    atable = Table(get_fullfilename("wedge.fits"))
     PhoIndex = 1.0
     Incl = 80
 

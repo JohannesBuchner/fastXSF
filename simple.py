@@ -20,7 +20,7 @@ RMF_src = data['RMF_src']
 chan_e = (data['chan_e_min'] + data['chan_e_max']) / 2.
 
 # load a Table model
-absAGN = fastxsf.Table('/home/user/Downloads/specmodels/uxclumpy-cutoff.fits')
+absAGN = fastxsf.Table(os.path.join(os.environ['MODELDIR'], 'uxclumpy-cutoff.fits'))
 
 # pre-compute the absorption factors -- no need to call this again and again if the parameters do not change!
 galabso = fastxsf.x.TBabs(energies=energies, pars=[data['galnh']])
