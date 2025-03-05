@@ -110,6 +110,27 @@ class Table:
         method: str
             interpolation kind, passed to RegularGridInterpolator
         """
+        parameter_grid, data = self._load(filename)
+        self.interpolator = RegularGridInterpolator(parameter_grid, data, method=method)
+
+    def _load(self, filename, verbose=True):
+        """Load data from file.
+
+        Parameters
+        ----------
+        filename: str
+            filename of a OGIP FITS file.
+        verbose: bool
+            whether to print the parameters of a file.
+
+        Returns
+        -------
+        parameter_grid: list
+            list of values for each parameter
+        data: array
+            array of shape `(len(g) for g in parameter_grid)`
+            containing the spectra for each parameter grid point.
+        """
         f = pyfits.open(filename)
         assert f[0].header["MODLUNIT"] in ("photons/cm^2/s", "ergs/cm**2/s")
         assert f[0].header["HDUCLASS"] == "OGIP"
@@ -146,7 +167,7 @@ class Table:
                 np.testing.assert_allclose(params, row["PARAMVAL"])
                 data[index] = row["INTPSPEC"]
         assert np.isfinite(data).all(), data
-        self.interpolator = RegularGridInterpolator(parameter_grid, data, method=method)
+        return parameter_grid, data
 
     def __call__(self, energies, pars, vectorized=False):
         """Evaluate spectrum.
@@ -208,3 +229,65 @@ class Table:
                     fp=model_int_spectrum / self.deltae * (1 + z),
                 ) * delta_e / (1 + z)
             )
+
+
+class FixedTable(Table):
+    """Additive or multiplicative table model with fixed energy grid."""
+
+    def __init__(self, filename, energies, redshift=0, method="linear"):
+        """Initialise.
+
+        Parameters
+        ----------
+        filename: str
+            filename of a OGIP FITS file.
+        method: str
+            interpolation kind, passed to RegularGridInterpolator
+        """
+        parameter_grid, data = self._load(filename)
+        # interpolate data from original energy grid onto new energy grid
+        self.energies = energies
+        e_lo = energies[:-1]
+        e_hi = energies[1:]
+        e_mid = (e_lo + e_hi) / 2.0
+        delta_e = e_hi - e_lo
+        newshape = list(data.shape)
+        newshape[-1] = len(e_mid)
+        newdata = np.zeros((data.size // data.shape[-1], len(e_mid)))
+        for i, row in enumerate(data.reshape((-1, data.shape[-1]))):
+            newdata[i, :] = np.interp(
+                # look up in rest-frame, which is at higher energies at higher redshifts
+                x=e_mid * (1 + redshift),
+                # in the model spectral grid
+                xp=self.e_model_mid,
+                # use spectral density, which is stretched out if redshifted.
+                fp=row / self.deltae * (1 + redshift),
+            ) * delta_e / (1 + redshift)
+        self.interpolator = RegularGridInterpolator(
+            parameter_grid, newdata.reshape(newshape),
+            method=method)
+
+    def __call__(self, energies, pars, vectorized=False):
+        """Evaluate spectrum.
+
+        Parameters
+        ----------
+        energies: array
+            energies in keV where spectrum should be computed (ignored)
+        pars: list
+            parameter values.
+        vectorized: bool
+            if true, pars is a list of parameter vectors,
+            and the function returns a list of spectra.
+
+        Returns
+        -------
+        spectrum: array
+            photon spectrum, corresponding to the parameter values,
+            one entry for each value in energies in phot/cm^2/s.
+        """
+        assert np.all(self.energies == energies)
+        if vectorized:
+            return self.interpolator(pars)
+        else:
+            return self.interpolator([pars])[0]

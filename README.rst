@@ -92,7 +92,7 @@ Todo
 * ✓ Profile where the code is still slow.
 * ✓ There is a python loop in fastxsf/model.py::Table.__call__ which should be replaced with something smarter
 * ✓ Compute fluxes and luminosities.
-* Create some unit tests for loading and evaluating atables/mtables, poisson PMF, plotting ARF/RMF, .
+* ✓ Create some unit tests for loading and evaluating atables/mtables, poisson probability, plotting ARF/RMF.
 * Make a atable that is precomputed for a given rest-frame energy grid at fixed redshift.
 * Make a automatic emulator.
 

@@ -1,6 +1,6 @@
 import numpy as np
 import fastxsf
-from fastxsf.model import Table
+from fastxsf.model import Table, FixedTable
 import os
 import requests
 import matplotlib.pyplot as plt
@@ -40,8 +40,10 @@ def test_disk_table():
     ZHe = 1
     ZFe = 1
     for z in 0.0, 1.0, 2.0, 4.0:
+        ftable = FixedTable("diskreflect.fits", energies, redshift=z)
         A = atable(energies, [PhoIndex, Ecut, Incl, z])
         B = fastxsf.x.pexmon(energies=energies, pars=[PhoIndex, Ecut, -1, z, ZHe, ZFe, Incl]) / (1 + z)**2 / 2
+        C = ftable(energies, [PhoIndex, Ecut, Incl])
         l, = plt.plot(e_mid, A / deltae / (1 + z)**2, label="atable")
         plt.plot(e_mid, B / deltae / (1 + z)**2, label="pexmon", ls=':', color=l.get_color())
         plt.xlabel("Energy [keV]")
@@ -53,6 +55,7 @@ def test_disk_table():
         #plt.close()
         mask = np.logical_and(energies[:-1] > 8 / (1 + z), energies[:-1] < 80 / (1 + z))
         assert_allclose(A[mask], B[mask], rtol=0.1)
+        assert_allclose(A, C)
 
 def test_pexpl_table():
     energies = np.logspace(-0.5, 2, 1000)
