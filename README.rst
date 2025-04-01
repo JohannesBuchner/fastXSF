@@ -68,19 +68,22 @@ Approach
    legacy awkwardness such as chi-square, C-stat, 
    background-subtraction, identify matrix folding, multi-source to data mappings.
 
-Getting started
----------------
+Installation
+------------
 
 Prerequisites:
 
-  * install and load xspec/heasoft
-  * install https://github.com/cxcsds/xspec-models-cxc/
-  * install ultranest (pip install ultranest)
-  * download this repository and enter it from the command line.
+* install and load xspec/heasoft
+* install https://github.com/cxcsds/xspec-models-cxc/
+* install ultranest (pip install ultranest)
+* download this repository and enter it from the command line.
 
 Test with::
 
    `python -c 'import xspec_models_cxc; import ultranest'`
+
+Getting started
+---------------
 
 To start, have a look at simple.py, which demonstrates:
 
