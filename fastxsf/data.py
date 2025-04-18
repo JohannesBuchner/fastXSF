@@ -48,7 +48,7 @@ def get_RMF(rmf_filename):
     return RMF(rmf_filename)
 
 
-def load_pha(filename, elo, ehi, load_absorption=True, z=None, validity_checks=True):
+def load_pha(filename, elo, ehi, load_absorption=True, z=None):
     """Load PHA file.
 
     Parameters
@@ -100,16 +100,15 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None, validity_checks=T
 
     aarf = get_ARF(arffile)
     armf = get_RMF(rmffile)
-    if validity_checks:
-        m = armf.get_dense_matrix()
-        Nflux, Nchan = m.shape
+    m = armf.get_dense_matrix()
+    Nflux, Nchan = m.shape
 
-        assert (Nflux,) == armf.energ_lo.shape == armf.energ_hi.shape
-        assert (Nflux,) == aarf.e_low.shape == aarf.e_high.shape
-        assert len(channels) == Nchan, (len(channels), Nchan)
+    assert (Nflux,) == armf.energ_lo.shape == armf.energ_hi.shape
+    assert (Nflux,) == aarf.e_low.shape == aarf.e_high.shape
+    assert len(channels) == Nchan, (len(channels), Nchan)
 
     armf.strip(mask)
-    
+
     # assert np.allclose(channels, np.arange(Nchan)+1), (channels, Nchan)
     fcounts = a["SPECTRUM"].data["COUNTS"]
     assert (Nchan,) == fcounts.shape, (fcounts.shape, Nchan)

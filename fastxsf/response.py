@@ -216,14 +216,13 @@ class RMF(object):
                     weights.append(self.matrix[inslice][mask_valid])
                 resp_idx += current_num_chans
             k += current_num_groups
-        
-        out_index_chunks = []
+
         out_indices = np.hstack(out_indices)
         in_indices = np.hstack(in_indices)
         weights = np.hstack(weights)
+        out_index_chunks = []
         for j in np.arange(self.detchans):
             if np.any(out_indices == j):
-                mask_chunk = np.where(out_indices == j)[0]
                 out_index_chunks.append((j, in_indices[out_indices == j], weights[out_indices == j]))
 
         self.n_chan = np.array(n_chan_new)
