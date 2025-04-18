@@ -1,3 +1,14 @@
+"""
+
+A new approach to X-ray spectral fitting with Xspec models and 
+optimized nested sampling.
+
+This script explains how to set up your model.
+
+The idea is that you create a function which computes all model components.
+
+"""
+
 import corner
 import numpy as np
 import scipy.stats
@@ -51,13 +62,17 @@ nonlinear_param_names = ['logNH', 'PhoIndex', 'emissPL', 'Rin', 'Rout', 'incl']
 
 def compute_model_components(params):
     logNH, PhoIndex, emissivityPL, Rin, Rout, incl = params
+
     # first component: a absorbed power law
+
     pl = fastxsf.x.zpowerlw(energies=energies, pars=[PhoIndex, z])
     abso = fastxsf.x.zTBabs(energies=energies, pars=[10**(logNH - 22), z])
     plabso = pl * abso
+
     # second component, a disk reflection
     Eline = 6.4  # keV
     refl = fastxsf.x.diskline(energies=energies, pars=[Eline, emissivityPL, Rin, Rout, incl])
+
     # third component, a copy of the unabsorbed power law
     scat = pl
     assert (pl >= 0).all()

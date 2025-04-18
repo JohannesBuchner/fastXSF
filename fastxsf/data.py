@@ -48,7 +48,7 @@ def get_RMF(rmf_filename):
     return RMF(rmf_filename)
 
 
-def load_pha(filename, elo, ehi, load_absorption=True, z=None):
+def load_pha(filename, elo, ehi, load_absorption=True, z=None, validity_checks=True):
     """Load PHA file.
 
     Parameters
@@ -79,6 +79,7 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
     backfile = os.path.join(path, header["BACKFILE"])
     rmffile = os.path.join(path, header["RESPFILE"])
     arffile = os.path.join(path, header["ANCRFILE"])
+    channels = a["SPECTRUM"].data["CHANNEL"]
 
     b = pyfits.open(backfile)
     bheader = b["SPECTRUM"].header
@@ -92,22 +93,23 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
         "ANCRFILE" not in bheader or bheader["ANCRFILE"] == header["ANCRFILE"]
     ), "background must have same ARF"
 
-    aarf = get_ARF(arffile)
-    armf = get_RMF(rmffile)
-    m = armf.get_dense_matrix()
-    Nflux, Nchan = m.shape
-
-    assert (Nflux,) == armf.energ_lo.shape == armf.energ_hi.shape
-    assert (Nflux,) == aarf.e_low.shape == aarf.e_high.shape
-
     ebounds = pyfits.getdata(rmffile, "EBOUNDS")
     chan_e_min = ebounds["E_MIN"]
     chan_e_max = ebounds["E_MAX"]
     mask = np.logical_and(chan_e_min > elo, chan_e_max < ehi)
 
-    channels = a["SPECTRUM"].data["CHANNEL"]
+    aarf = get_ARF(arffile)
+    armf = get_RMF(rmffile)
+    if validity_checks:
+        m = armf.get_dense_matrix()
+        Nflux, Nchan = m.shape
+
+        assert (Nflux,) == armf.energ_lo.shape == armf.energ_hi.shape
+        assert (Nflux,) == aarf.e_low.shape == aarf.e_high.shape
+        assert len(channels) == Nchan, (len(channels), Nchan)
+    armf.strip(mask)
+    
     # assert np.allclose(channels, np.arange(Nchan)+1), (channels, Nchan)
-    assert len(channels) == Nchan, (len(channels), Nchan)
     fcounts = a["SPECTRUM"].data["COUNTS"]
     assert (Nchan,) == fcounts.shape, (fcounts.shape, Nchan)
     counts = fcounts.astype(int)

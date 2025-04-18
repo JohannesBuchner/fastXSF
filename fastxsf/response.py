@@ -164,13 +164,47 @@ class RMF(object):
 
         n_chan_flat = np.hstack(n_chan_new)
         f_chan_flat = np.hstack(f_chan_new)
-
-        # if n_chan is zero, we'll remove those as well.
-        nz_idx2 = (n_chan_flat > 0)
-        n_chan_flat = n_chan_flat[nz_idx2]
-        f_chan_flat = f_chan_flat[nz_idx2]
+        print('Group info:', n_grp.shape, len(f_chan), len(n_chan), 'new:', f_chan_flat.shape, n_chan_flat.shape)
 
         return n_grp, f_chan_flat, n_chan_flat, matrix_flat
+
+    def strip(self, channel_mask):
+        n_grp_new = np.zeros_like(self.n_grp)
+        n_chan_new = []
+        f_chan_new = []
+        matrix_new = []
+        k = 0
+        resp_idx = 0
+        # loop over all channels
+        for i in range(len(self.energ_lo)):
+            # get the current number of groups
+            current_num_groups = self.n_grp[i]
+
+            # loop over the current number of groups
+            for current_num_chans, counts_idx in zip(
+                self.n_chan[k:k + current_num_groups],
+                self.f_chan[k:k + current_num_groups]
+            ):
+                # add the flux to the subarray of the counts array that starts with
+                # counts_idx and runs over current_num_chans channels
+                # outslice = slice(counts_idx, counts_idx + current_num_chans)
+                inslice = slice(resp_idx, resp_idx + current_num_chans)
+                if current_num_chans > 0 and channel_mask[counts_idx:counts_idx + current_num_chans].any():
+                    # add block
+                    n_grp_new[i] += 1
+                    # length
+                    n_chan_new.append(current_num_chans)
+                    # location in matrix
+                    f_chan_new.append(counts_idx)
+                    matrix_new.append(self.matrix[inslice])
+                resp_idx += current_num_chans
+            k += current_num_groups
+
+        self.n_chan = np.array(n_chan_new)
+        self.f_chan = np.array(f_chan_new)
+        self.n_grp = n_grp_new
+        self.matrix = np.hstack(matrix_new)
+        print('Stripped group info:', self.n_grp.shape, self.n_chan.shape, self.f_chan.shape)
 
     def apply_rmf(self, spec):
         """
