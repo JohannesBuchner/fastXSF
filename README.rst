@@ -100,6 +100,9 @@ Next, the vectorization is in simplev.py, which demonstrates the same as above p
 * vectorized handling of proposals
 * launching UltraNest for sampling the posterior, make corner plots.
 
+Next, there is simpleopt.py, which demonstrates optimized nested sampling (optNS).
+This is much faster, especially when there are many components with free normalisations.
+
 Take it for a spin and adapt it!
 
 Todo
