@@ -107,6 +107,7 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None, validity_checks=T
         assert (Nflux,) == armf.energ_lo.shape == armf.energ_hi.shape
         assert (Nflux,) == aarf.e_low.shape == aarf.e_high.shape
         assert len(channels) == Nchan, (len(channels), Nchan)
+
     armf.strip(mask)
     
     # assert np.allclose(channels, np.arange(Nchan)+1), (channels, Nchan)

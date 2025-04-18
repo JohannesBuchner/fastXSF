@@ -98,6 +98,7 @@ class RMF(object):
         # flatten the variable-length arrays
         results = self._flatten_arrays(n_grp, f_chan, n_chan, matrix)
         self.n_grp, self.f_chan, self.n_chan, self.matrix = results
+        self.dense_info = None
 
     def __get_tlmin(self, h):
         """
@@ -164,15 +165,26 @@ class RMF(object):
 
         n_chan_flat = np.hstack(n_chan_new)
         f_chan_flat = np.hstack(f_chan_new)
-        print('Group info:', n_grp.shape, len(f_chan), len(n_chan), 'new:', f_chan_flat.shape, n_chan_flat.shape)
 
         return n_grp, f_chan_flat, n_chan_flat, matrix_flat
 
     def strip(self, channel_mask):
+        """
+        Strip response matrix of entries outside the channel mask.
+
+        Parameters
+        ----------
+        channel_mask : array
+            Boolean array indicating which detector channel to keep.
+        """
         n_grp_new = np.zeros_like(self.n_grp)
         n_chan_new = []
         f_chan_new = []
         matrix_new = []
+
+        in_indices = []
+        out_indices = []
+        weights = []
         k = 0
         resp_idx = 0
         # loop over all channels
@@ -189,7 +201,8 @@ class RMF(object):
                 # counts_idx and runs over current_num_chans channels
                 # outslice = slice(counts_idx, counts_idx + current_num_chans)
                 inslice = slice(resp_idx, resp_idx + current_num_chans)
-                if current_num_chans > 0 and channel_mask[counts_idx:counts_idx + current_num_chans].any():
+                mask_valid = channel_mask[counts_idx:counts_idx + current_num_chans]
+                if current_num_chans > 0 and mask_valid.any():
                     # add block
                     n_grp_new[i] += 1
                     # length
@@ -197,14 +210,27 @@ class RMF(object):
                     # location in matrix
                     f_chan_new.append(counts_idx)
                     matrix_new.append(self.matrix[inslice])
+
+                    in_indices.append((i + np.zeros(current_num_chans, dtype=int))[mask_valid])
+                    out_indices.append(np.arange(counts_idx, counts_idx + current_num_chans)[mask_valid])
+                    weights.append(self.matrix[inslice][mask_valid])
                 resp_idx += current_num_chans
             k += current_num_groups
+        
+        out_index_chunks = []
+        out_indices = np.hstack(out_indices)
+        in_indices = np.hstack(in_indices)
+        weights = np.hstack(weights)
+        for j in np.arange(self.detchans):
+            if np.any(out_indices == j):
+                mask_chunk = np.where(out_indices == j)[0]
+                out_index_chunks.append((j, in_indices[out_indices == j], weights[out_indices == j]))
 
         self.n_chan = np.array(n_chan_new)
         self.f_chan = np.array(f_chan_new)
         self.n_grp = n_grp_new
         self.matrix = np.hstack(matrix_new)
-        print('Stripped group info:', self.n_grp.shape, self.n_chan.shape, self.f_chan.shape)
+        self.dense_info = out_index_chunks
 
     def apply_rmf(self, spec):
         """
@@ -246,6 +272,12 @@ class RMF(object):
             counts/s/channel
 
         """
+        if self.dense_info is not None:
+            out = np.zeros(self.detchans)
+            for i, in_indices_i, weights_i in self.dense_info:
+                out[i] = np.dot(spec[in_indices_i], weights_i)
+            return out
+
         # get the number of channels in the data
         nchannels = spec.shape[0]
 
