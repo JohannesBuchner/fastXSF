@@ -107,7 +107,8 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
     assert (Nflux,) == aarf.e_low.shape == aarf.e_high.shape
     assert len(channels) == Nchan, (len(channels), Nchan)
 
-    armf.strip(mask)
+    aarf.strip(armf.strip(mask))
+    assert armf.energ_lo.shape == armf.energ_hi.shape == aarf.e_low.shape == aarf.e_high.shape
 
     # assert np.allclose(channels, np.arange(Nchan)+1), (channels, Nchan)
     fcounts = a["SPECTRUM"].data["COUNTS"]
@@ -135,6 +136,7 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
         e_lo=np.array(aarf.e_low),
         e_hi=np.array(aarf.e_high),
         e_delta=np.array(aarf.e_high - aarf.e_low),
+        energies=np.append(aarf.e_low, aarf.e_high[-1]),
         chan_e_min=chan_e_min[mask],
         chan_e_max=chan_e_max[mask],
         src_expo=exposure,

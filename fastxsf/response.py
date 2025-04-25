@@ -176,13 +176,21 @@ class RMF(object):
         ----------
         channel_mask : array
             Boolean array indicating which detector channel to keep.
+
+        Returns
+        -------
+        energy_mask : array
+            Boolean array indicating which energy channels were kept.
         """
         n_grp_new = np.zeros_like(self.n_grp)
         n_chan_new = []
         f_chan_new = []
         matrix_new = []
+        energ_lo_new = []
+        energ_hi_new = []
 
         in_indices = []
+        i_new = 0
         out_indices = []
         weights = []
         k = 0
@@ -204,27 +212,39 @@ class RMF(object):
                 mask_valid = channel_mask[counts_idx:counts_idx + current_num_chans]
                 if current_num_chans > 0 and mask_valid.any():
                     # add block
-                    n_grp_new[i] += 1
+                    n_grp_new[i_new] += 1
                     # length
                     n_chan_new.append(current_num_chans)
                     # location in matrix
                     f_chan_new.append(counts_idx)
                     matrix_new.append(self.matrix[inslice])
 
-                    in_indices.append((i + np.zeros(current_num_chans, dtype=int))[mask_valid])
+                    in_indices.append((i_new + np.zeros(current_num_chans, dtype=int))[mask_valid])
                     out_indices.append(np.arange(counts_idx, counts_idx + current_num_chans)[mask_valid])
                     weights.append(self.matrix[inslice][mask_valid])
                 resp_idx += current_num_chans
+
             k += current_num_groups
+            if n_grp_new[i_new] > 0:
+                energ_lo_new.append(self.energ_lo[i])
+                energ_hi_new.append(self.energ_hi[i])
+                i_new += 1
 
         out_indices = np.hstack(out_indices)
         in_indices = np.hstack(in_indices)
         weights = np.hstack(weights)
         self.n_chan = np.array(n_chan_new)
         self.f_chan = np.array(f_chan_new)
-        self.n_grp = n_grp_new
+
+        # cut down input array as well
+        strip_mask = n_grp_new > 0
+        self.n_grp = n_grp_new[strip_mask]
+        self.energ_lo = np.array(energ_lo_new)
+        self.energ_hi = np.array(energ_hi_new)
+
         self.matrix = np.hstack(matrix_new)
         self.dense_info = in_indices, out_indices, weights
+        return strip_mask
 
     def apply_rmf(self, spec):
         """
@@ -494,9 +514,20 @@ class ARF(object):
         else:
             self.fracexpo = 1.0
 
-    def apply_arf(self, spec, exposure=None):
+    def strip(self, mask):
+        """Remove unneeded energy ranges.
+
+        Parameters
+        ----------
+        mask: array
+            Boolean array indicating which energy channel to keep.
         """
-        Fold the spectrum through the ARF.
+        self.e_low = self.e_low[mask]
+        self.e_high = self.e_high[mask]
+        self.specresp = self.specresp[mask]
+
+    def apply_arf(self, spec, exposure=None):
+        """Fold the spectrum through the ARF.
 
         The ARF is a single vector encoding the effective area information
         about the detector. A such, applying the ARF is a simple
