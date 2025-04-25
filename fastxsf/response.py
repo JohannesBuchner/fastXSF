@@ -220,16 +220,11 @@ class RMF(object):
         out_indices = np.hstack(out_indices)
         in_indices = np.hstack(in_indices)
         weights = np.hstack(weights)
-        out_index_chunks = []
-        for j in np.arange(self.detchans):
-            if np.any(out_indices == j):
-                out_index_chunks.append((j, in_indices[out_indices == j], weights[out_indices == j]))
-
         self.n_chan = np.array(n_chan_new)
         self.f_chan = np.array(f_chan_new)
         self.n_grp = n_grp_new
         self.matrix = np.hstack(matrix_new)
-        self.dense_info = out_index_chunks
+        self.dense_info = in_indices, out_indices, weights
 
     def apply_rmf(self, spec):
         """
@@ -273,8 +268,8 @@ class RMF(object):
         """
         if self.dense_info is not None:
             out = np.zeros(self.detchans)
-            for i, in_indices_i, weights_i in self.dense_info:
-                out[i] = np.dot(spec[in_indices_i], weights_i)
+            in_indices, out_indices, weights = self.dense_info
+            np.add.at(out, out_indices, spec[in_indices] * weights)
             return out
 
         # get the number of channels in the data
@@ -356,6 +351,12 @@ class RMF(object):
         """
         # get the number of channels in the data
         nspecs, nchannels = specs.shape
+        if self.dense_info is not None:
+            in_indices, out_indices, weights = self.dense_info
+            out = np.zeros((nspecs, self.detchans))
+            for i in range(nspecs):
+                np.add.at(out[i], out_indices, specs[i,in_indices] * weights)
+            return out
 
         # an empty array for the output counts
         counts = np.zeros((nspecs, nchannels))
