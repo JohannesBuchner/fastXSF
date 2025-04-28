@@ -7,7 +7,7 @@ import numpy as np
 from astropy import units as u
 from astropy.cosmology import Planck18 as cosmo
 
-from .response import ARF, RMF
+from .response import ARF, RMF, MockARF
 
 
 @cache
@@ -48,7 +48,7 @@ def get_RMF(rmf_filename):
     return RMF(rmf_filename)
 
 
-def load_pha(filename, elo, ehi, load_absorption=True, z=None):
+def load_pha(filename, elo, ehi, load_absorption=True, z=None, require_background=True):
     """Load PHA file.
 
     Parameters
@@ -64,6 +64,9 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
     z: float or None
         if given, set data['redshift'] to z.
         Otherwise try to load the <filename>.z file.
+    require_background: bool
+        whether to fail if no corresponding background file is associated
+        with the data.
 
     Returns
     -------
@@ -97,17 +100,22 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
     chan_e_min = ebounds["E_MIN"]
     chan_e_max = ebounds["E_MAX"]
     mask = np.logical_and(chan_e_min > elo, chan_e_max < ehi)
-
-    aarf = get_ARF(arffile)
     armf = get_RMF(rmffile)
     m = armf.get_dense_matrix()
     Nflux, Nchan = m.shape
 
     assert (Nflux,) == armf.energ_lo.shape == armf.energ_hi.shape
+
+    if header["ANCRFILE"].strip() == 'NONE':
+        aarf = MockARF(armf)
+    else:
+        aarf = get_ARF(arffile)
+
     assert (Nflux,) == aarf.e_low.shape == aarf.e_high.shape
     assert len(channels) == Nchan, (len(channels), Nchan)
 
-    aarf.strip(armf.strip(mask))
+    strip_mask = armf.strip(mask)
+    aarf.strip(strip_mask)
     assert armf.energ_lo.shape == armf.energ_hi.shape == aarf.e_low.shape == aarf.e_high.shape
 
     # assert np.allclose(channels, np.arange(Nchan)+1), (channels, Nchan)
@@ -131,7 +139,7 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
         bkg_region_counts=bcounts[mask],
         chan_mask=mask,
         RMF_src=armf,
-        RMF=np.array(m[:, mask]),
+        RMF=np.array(m[:, mask][strip_mask,:]),
         ARF=np.array(aarf.specresp),
         e_lo=np.array(aarf.e_low),
         e_hi=np.array(aarf.e_high),
@@ -145,9 +153,7 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None):
         bkg_expoarea=bexposure * bareascal,
         src_to_bkg_ratio=areascal / bareascal * backscal / bbackscal * exposure / bexposure,
     )
-    data["chan_const_spec_weighting"] = np.dot(
-        data["src_expoarea"] * data["e_delta"] * data["ARF"], data["RMF"]
-    )
+    data["chan_const_spec_weighting"] = np.dot(data["e_delta"] * data["ARF"], data["RMF"]) * data["src_expoarea"]
 
     if os.path.exists(backfile + "_model.fits"):
         bkg_model = pyfits.getdata(backfile + "_model.fits", "SPECTRA")

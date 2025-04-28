@@ -557,3 +557,14 @@ class ARF(object):
             spec.shape, self.specresp.shape)
         e = self.exposure if exposure is None else exposure
         return np.array(spec) * self.specresp * e
+
+
+class MockARF(ARF):
+    """Mock area response file."""
+
+    def __init__(self, rmf):
+        self.e_low = rmf.energ_lo
+        self.e_high = rmf.energ_hi
+        self.e_unit = rmf.energ_unit
+        self.exposure = None
+        self.specresp = np.ones_like(self.e_low)
