@@ -234,15 +234,22 @@ class Table:
 class FixedTable(Table):
     """Additive or multiplicative table model with fixed energy grid."""
 
-    def __init__(self, filename, energies, redshift=0, method="linear"):
+    def __init__(self, filename, energies, redshift=0, method="linear", fix={}):
         """Initialise.
 
         Parameters
         ----------
         filename: str
             filename of a OGIP FITS file.
+        energies: array
+            energies in keV where spectrum should be computed
+        redshift: float
+            Redshift
         method: str
             interpolation kind, passed to RegularGridInterpolator
+        fix: dict
+            dictionary of parameter names and their values to fix
+            for faster data loading.
         """
         parameter_grid, data = self._load(filename)
         # interpolate data from original energy grid onto new energy grid
@@ -251,21 +258,106 @@ class FixedTable(Table):
         e_hi = energies[1:]
         e_mid = (e_lo + e_hi) / 2.0
         delta_e = e_hi - e_lo
-        newshape = list(data.shape)
-        newshape[-1] = len(e_mid)
-        newdata = np.zeros((data.size // data.shape[-1], len(e_mid)))
-        for i, row in enumerate(data.reshape((-1, data.shape[-1]))):
+        self.set_shape(list(data.shape), len(e_mid))
+        # look up in rest-frame, which is at higher energies at higher redshifts
+        self.prepare(
+            parameter_grid, data,
+            e_mid * (1 + redshift), delta_e / (1 + redshift), self.deltae / (1 + redshift),
+            method=method, fix=fix)
+
+    def prepare(self, parameter_grid, data, e_mid_rest, deltae_rest, model_deltae_rest, method, fix={}):
+        """Prepare.
+
+        Parameters
+        ----------
+        parameter_grid: array
+            list of possible values for each parameter Returns
+        data: array
+            data table
+        e_mid_rest: array
+            Rest frame energy grid
+        deltae_rest: array
+            Channel grid spacing.
+        model_deltae_rest: array
+            Energy grid spacing.
+        method: str
+            interpolation kind, passed to RegularGridInterpolator
+        fix: dict
+            dictionary of parameter names and their values to fix
+            for faster data loading.
+        """
+        # param_shapes = [len(p) for p in parameter_grid]
+        # ndim = len(param_shapes)
+
+        # Flatten the parameter grid into indices
+        data_reshaped = data.reshape((-1, data.shape[-1]))
+        n_points = data_reshaped.shape[0]
+        mask = np.ones(n_points, dtype=bool)
+
+        # Precompute grids
+        param_grids = np.meshgrid(*parameter_grid, indexing='ij')
+        # same shape as data without last dim
+        param_grids_flat = [g.flatten() for g in param_grids]
+        # each entry is flattened to match reshaped data
+        parameter_names = [str(pname) for pname in self.parameter_names]
+
+        # Now apply fix conditions
+        for pname, val in fix.items():
+            assert pname in parameter_names, (pname, self.parameter_names)
+            param_idx = parameter_names.index(pname)
+            mask &= (param_grids_flat[param_idx] == val)
+            assert mask.any(), (f'You can only fix parameter {pname} to one of:', parameter_grid[param_idx])
+
+        # Mask valid rows
+        valid_data = data_reshaped[mask]
+        # Build new parameter grid (only for unfixed parameters)
+        newparameter_grid = []
+        for p, pname in zip(parameter_grid, self.parameter_names):
+            if pname not in fix:
+                newparameter_grid.append(p)
+
+        # Interpolate
+        newdata = np.zeros((valid_data.shape[0], len(e_mid_rest)))
+        for i, row in enumerate(valid_data):
             newdata[i, :] = np.interp(
-                # look up in rest-frame, which is at higher energies at higher redshifts
-                x=e_mid * (1 + redshift),
-                # in the model spectral grid
+                x=e_mid_rest,
                 xp=self.e_model_mid,
-                # use spectral density, which is stretched out if redshifted.
-                fp=row / self.deltae * (1 + redshift),
-            ) * delta_e / (1 + redshift)
+                fp=row / model_deltae_rest,
+            ) * deltae_rest
+
+        self.set_shape(tuple([len(g) for g in newparameter_grid] + [len(e_mid_rest)]), len(e_mid_rest))
         self.interpolator = RegularGridInterpolator(
-            parameter_grid, newdata.reshape(newshape),
+            newparameter_grid, self.prepare_function(newdata),
             method=method)
+
+    def prepare_function(self, y):
+        """Modify table rows.
+
+        Parameters
+        ----------
+        y: array
+            table rows
+
+        Returns
+        -------
+        ynew: array
+            Reshaped table.
+        """
+        return y.reshape(self.newshape)
+
+    def set_shape(self, modelaxes, outlen):
+        """Set shape of final table.
+
+        Parameters
+        ----------
+        modelaxes: tuple
+            shape of input table
+        outlen: int
+            length of last axis
+        """
+        newshape = list(modelaxes)
+        newshape[-1] = outlen
+        self.newshape = newshape
 
     def __call__(self, energies, pars, vectorized=False):
         """Evaluate spectrum.
@@ -291,3 +383,175 @@ class FixedTable(Table):
             return self.interpolator(pars)
         else:
             return self.interpolator([pars])[0]
+
+
+class FixedFoldedTable(FixedTable):
+    """Additive or multiplicative table model folded through RMF."""
+
+    def prepare_function(self, y):
+        """Modify table rows.
+
+        Parameters
+        ----------
+        y: array
+            table rows
+
+        Returns
+        -------
+        ynew: array
+            Reshaped table.
+        """
+        folded_spectrum = self.RMF.apply_rmf_vectorized(y * self.ARF)
+        assert folded_spectrum.shape == (len(y), self.newshape[-1]), (folded_spectrum.shape, y.shape, len(y), self.newshape[-1])
+        return folded_spectrum.reshape(self.newshape)
+
+    def set_shape(self, modelaxes, outlen):
+        """Set shape of final table.
+
+        Parameters
+        ----------
+        modelaxes: tuple
+            shape of input table
+        outlen: int
+            ignored.
+        """
+        newshape = list(modelaxes)
+        newshape[-1] = self.RMF.detchans
+        self.newshape = newshape
+
+    def __init__(self, filename, energies, RMF, ARF, redshift=0, method="linear", fix={}):
+        """Initialise.
+
+        Parameters
+        ----------
+        filename: str
+            filename of a OGIP FITS file.
+        energies: array
+            energies in keV where spectrum should be computed
+        redshift: float
+            Redshift
+        method: str
+            interpolation kind, passed to RegularGridInterpolator
+        fix: dict
+            dictionary of parameter names and their values to fix
+            for faster data loading.
+        """
+        self.ARF = ARF
+        self.RMF = RMF
+        FixedTable.__init__(self, filename=filename, energies=energies, redshift=redshift, method=method, fix=fix)
+
+    def __call__(self, pars, vectorized=False):
+        """Evaluate spectrum.
+
+        Parameters
+        ----------
+        pars: list
+            parameter values.
+        vectorized: bool
+            if true, pars is a list of parameter vectors,
+            and the function returns a list of spectra.
+
+        Returns
+        -------
+        spectrum: array
+            photon spectrum, corresponding to the parameter values,
+            one entry for each value in energies in phot/cm^2/s.
+        """
+        try:
+            if vectorized:
+                return self.interpolator(pars)
+            else:
+                return self.interpolator([pars])[0]
+        except ValueError as e:
+            raise ValueError(f'invalid parameter values passed: {pars}') from e
+
+
+def prepare_folded_model0d(model, energies, pars, ARF, RMF, nonnegative=True):
+    """Prepare a folded spectrum.
+
+    Parameters
+    ----------
+    model: object
+        xspec model (from fastxsf.x module, which is xspec_models_cxc)
+    energies: array
+        energies in keV where spectrum should be computed (ignored)
+    pars: list
+        parameter values.
+    ARF: array
+        vector for multiplication before applying the RMF
+    RMF: RMF
+        RMF object for folding
+    nonnegative: bool
+        <MEANING OF nonnegative>
+
+    Returns
+    -------
+    folded_spectrum: array
+        folded spectrum after applying RMF & ARF
+    """
+    if nonnegative:
+        return RMF.apply_rmf(np.clip(model(energies=energies, pars=pars), 0, None) * ARF)
+    else:
+        return RMF.apply_rmf(model(energies=energies, pars=pars) * ARF)
+
+
+def prepare_folded_model1d(model, energies, pars, ARF, RMF, nonnegative=True, method='linear'):
+    """Prepare a function that returns the folded model.
+
+    Parameters
+    ----------
+    model: object
+        xspec model (from fastxsf.x module, which is xspec_models_cxc)
+    energies: array
+        energies in keV where spectrum should be computed (ignored)
+    pars: list
+        parameter values; one of the entries can be an array,
+        which will be the interpolation range.
+    ARF: array
+        vector for multiplication before applying the RMF
+    RMF: RMF
+        RMF object for folding
+    nonnegative: bool
+        <MEANING OF nonnegative>
+    method: str
+        interpolation kind, passed to RegularGridInterpolator
+
+    Returns
+    -------
+    folded_spectrum: array
+        folded spectrum after applying RMF & ARF
+    simple_interpolator: func
+        function that given the free parameter value returns a folded spectrum.
+    """
+    mask_fixed = np.array([np.size(p) == 1 for p in pars])
+    i_variable = np.where(~(mask_fixed))[0][0]
+
+    data = np.zeros((len(pars[i_variable]), len(ARF)))
+    for i, variable in enumerate(pars[i_variable]):
+        pars_row = list(pars)
+        pars_row[i_variable] = variable
+        data[i] = model(energies=energies, pars=pars_row)
+    foldeddata = RMF.apply_rmf_vectorized(data * ARF)
+    if nonnegative:
+        foldeddata = np.clip(foldeddata, 0, None)
+    interp = RegularGridInterpolator((pars[i_variable],), foldeddata, method=method)
+
+    def simple_interpolator(par):
+        """Interpolator for a single parameter.
+
+        Parameters
+        ----------
+        par: float
+            The value for the one free model parameter
+
+        Returns
+        -------
+        spectrum: array
+            photon spectrum
+        """
+        try:
+            return interp([par])[0]
+        except ValueError as e:
+            raise ValueError(f'invalid parameter value passed: {par}') from e
+
+    return simple_interpolator

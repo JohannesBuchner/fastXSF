@@ -34,7 +34,7 @@ filepath = '/mnt/data/daten/PostDoc2/research/agn/eROSITA/xlf/xrayspectra/NuSTAR
 data_sets = {
     'Chandra': fastxsf.load_pha(filepath + 'C.pha', 0.5, 8),
     'NuSTAR-FPMA': fastxsf.load_pha(filepath + 'A.pha', 4, 77),
-    # 'NuSTAR-FPMB': fastxsf.load_pha(filepath + 'B.pha', 4, 77),
+    'NuSTAR-FPMB': fastxsf.load_pha(filepath + 'B.pha', 4, 77),
 }
 
 redshift = data_sets['Chandra']['redshift']
@@ -47,10 +47,37 @@ galabsos = {
 
 # load a Table model
 tablepath = os.path.join(os.environ.get('MODELDIR', '.'), 'uxclumpy-cutoff.fits')
-absAGNs = {
-    k: fastxsf.model.FixedTable(tablepath, energies=data['energies'], redshift=redshift)
+import time
+#t0 = time.time()
+#print("preparing fixed table models...")
+#absAGNs = {
+#    k: fastxsf.model.FixedTable(tablepath, energies=data['energies'], redshift=redshift)
+#    for k, data in data_sets.items()
+#}
+#print(f'took {time.time() - t0:.3f}s')
+t0 = time.time()
+print("preparing folded table models...")
+absAGN_folded = {
+    k: fastxsf.model.FixedFoldedTable(
+        tablepath, energies=data['energies'], ARF=data['ARF'] * galabsos[k], RMF=data['RMF_src'], redshift=redshift, fix=dict(Ecut=400, Theta_inc=60))
     for k, data in data_sets.items()
 }
+print(f'took {time.time() - t0:.3f}s')
+t0 = time.time()
+print("preparing 1d interpolated models...")
+scat_folded = {
+    k: fastxsf.model.prepare_folded_model1d(fastxsf.x.zpowerlw, pars=[np.arange(1.0, 3.1, 0.01), redshift], energies=data['energies'], ARF=data['ARF'] * galabsos[k], RMF=data['RMF_src'])
+    for k, data in data_sets.items()
+}
+apec_folded = {
+    k: fastxsf.model.prepare_folded_model1d(fastxsf.x.apec, pars=[10**np.arange(-2, 1.2, 0.01), 1.0, redshift], energies=data['energies'], ARF=data['ARF'] * galabsos[k], RMF=data['RMF_src'])
+    for k, data in data_sets.items()
+}
+print(f'took {time.time() - t0:.3f}s')
+print(scat_folded['Chandra'](2.0), scat_folded['Chandra']([2.0]).shape)
+assert scat_folded['Chandra'](2.0).shape == data_sets['Chandra']['chan_mask'].shape
+print(apec_folded['Chandra'](2.0), apec_folded['Chandra']([2.0]).shape)
+assert apec_folded['Chandra'](2.0).shape == data_sets['Chandra']['chan_mask'].shape
 
 # pre-compute the absorption factors -- no need to call this again and again if the parameters do not change!
 Incl = 45.0
@@ -63,7 +90,7 @@ Ecut = 400
 nonlinear_param_names = ['logNH', 'PhoIndex', 'TORsigma', 'CTKcover', 'kT']
 
 # set up a prior transform
-PhoIndex_gauss = scipy.stats.norm(1.95, 0.15)
+PhoIndex_gauss = scipy.stats.truncnorm(loc=1.95, scale=0.15, a=(1.0 - 1.95) / 0.15, b=(3.0 - 1.95) / 0.15)
 def nonlinear_param_transform(cube):
     params = cube.copy()
     params[0] = cube[0] * 6 + 20    # logNH
@@ -292,40 +319,65 @@ class IndependentPredictionPacker:
 
 
 def compute_model_components(params):
+    assert np.isfinite(params).all(), params
     logNH, PhoIndex, TORsigma, CTKcover, kT = params
 
     pred_counts = {}
 
     for k, data in data_sets.items():
         # compute model components for each data set:
-
-        energies = data['energies']
-        # first component: a absorbed power law
-        abs_component = absAGNs[k](energies=energies, pars=[
-            10**(logNH - 22), PhoIndex, Ecut, TORsigma, CTKcover, Incl])
-
-        # second component, a copy of the unabsorbed power law
-        scat = fastxsf.x.zpowerlw(energies=energies, pars=[PhoIndex, redshift])
-
-        # third component, a apec model
-        apec = np.clip(fastxsf.x.apec(energies=energies, pars=[kT, 1.0, redshift]), 0, None)
-
-        src_spectral_components = [abs_component, scat, apec]
-        assert np.all(abs_component >= 0)
-        assert np.all(scat >= 0)
-        assert np.all(apec >= 0), apec[~(apec >= 0)]
+        #src_spectral_components = [abs_component, scat, apec]
         pred_counts[k] = []
         pred_counts[k].append(data['bkg_model_src_region'] * data['src_expoarea'])
         assert np.all(pred_counts[k][0] >= 0)
         pred_counts[k + '_bkg'] = []
         pred_counts[k + '_bkg'].append(data['bkg_model_bkg_region'] * data['bkg_expoarea'])
         assert np.all(pred_counts[k + '_bkg'][0] >= 0)
-        for src_spectral_component in src_spectral_components:
-            # now let's apply the response to each component:
-            pred_counts[k].append(data['RMF_src'].apply_rmf(
-                data['ARF'] * galabsos[k] * src_spectral_component)[data['chan_mask']] * data['src_expoarea'])
-            assert np.all(pred_counts[k][-1] >= 0), k
 
+        # energies = data['energies']
+        # first component: a absorbed power law
+        #abs_component = absAGNs[k](energies=energies, pars=[
+        #    10**(logNH - 22), PhoIndex, Ecut, TORsigma, CTKcover, Incl])
+
+        # second component, a copy of the unabsorbed power law
+        #scat = fastxsf.x.zpowerlw(energies=energies, pars=[PhoIndex, redshift])
+
+        # third component, a apec model
+        #apec = np.clip(fastxsf.x.apec(energies=energies, pars=[kT, 1.0, redshift]), 0, None)
+        #assert np.all(abs_component >= 0)
+        #assert np.all(scat >= 0)
+        #assert np.all(apec >= 0), apec[~(apec >= 0)]
+
+        #weighted_src_spectral_components = np.einsum('i,i,ji->ji', data['ARF'], galabsos[k], src_spectral_components)
+        #for row in data['RMF_src'].apply_rmf_vectorized(weighted_src_spectral_components):
+        #    pred_counts[k].append(row[data['chan_mask']] * data['src_expoarea'])
+        #    assert np.all(row >= 0), k
+        pred_counts[k].append(absAGN_folded[k](pars=[10**(logNH - 22), PhoIndex, TORsigma, CTKcover])[data['chan_mask']] * data['src_expoarea'])
+        pred_counts[k].append(scat_folded[k](PhoIndex)[data['chan_mask']] * data['src_expoarea'])
+        pred_counts[k].append(apec_folded[k](kT)[data['chan_mask']] * data['src_expoarea'])
+        #for src_spectral_component in weighted_src_spectral_components:
+        #    # now let's apply the response to each component:
+        #    pred_counts[k].append(data['RMF_src'].apply_rmf(src_spectral_component)[data['chan_mask']] * data['src_expoarea'])
+        #    assert np.all(pred_counts[k][-1] >= 0), k
+        """
+        src_spectral_components = np.array([abs_component, scat, apec])
+        assert np.all(abs_component >= 0)
+        assert np.all(scat >= 0)
+        assert np.all(apec >= 0), apec[~(apec >= 0)]
+        pred_counts[k] = np.zeros((4, data['chan_mask'].sum()))
+        pred_counts[k][0] = data['bkg_model_src_region'] * data['src_expoarea']
+        assert np.all(pred_counts[k][0] >= 0)
+        pred_counts[k + '_bkg'] = np.zeros((4, data['chan_mask'].sum()))
+        pred_counts[k + '_bkg'][0] = data['bkg_model_bkg_region'] * data['bkg_expoarea']
+        assert np.all(pred_counts[k + '_bkg'][0] >= 0)
+        #pred_counts[k][1:,:] = data['RMF_src'].apply_rmf_vectorized(
+        #    src_spectral_components * (data['ARF'] * galabsos[k]))[:,data['chan_mask']] * data['src_expoarea']
+        for j, src_spectral_component in enumerate(src_spectral_components):
+            # now let's apply the response to each component:
+            pred_counts[k][j] = data['RMF_src'].apply_rmf(
+                data['ARF'] * galabsos[k] * src_spectral_component)[data['chan_mask']] * data['src_expoarea']
+            assert np.all(pred_counts[k][j] >= 0), (k, j)
+        """
     return pred_counts
 
 for k, data in data_sets.items():
@@ -385,14 +437,27 @@ plt.legend(ncol=4)
 plt.savefig('multispecopt-ppc.pdf')
 plt.close()
 
+print("starting benchmark...")
+import time, tqdm
+t0 = time.time()
+for i in tqdm.trange(1000):
+    u = np.random.uniform(size=len(statmodel.nonlinear_param_names))
+    nonlinear_params = statmodel.nonlinear_param_transform(u)
+    assert np.isfinite(nonlinear_params).all()
+    X = statmodel.compute_model_components(nonlinear_params)
+    assert np.isfinite(X).all()
+    statmodel.statmodel.update_components(X)
+    norms = statmodel.statmodel.norms()
+    assert np.isfinite(norms).all()
+    pred_counts = norms @ X.T
+print('Duration:', (time.time() - t0) / 1000)
 
 optsampler = statmodel.ReactiveNestedSampler(
-    log_dir='multispecopt', resume=True)
+    log_dir='multispecoptjit', resume=True)
 # run the UltraNest optimized sampler on the nonlinear parameter space:
 optresults = optsampler.run(max_num_improvement_loops=0, frac_remain=0.5)
 optsampler.print_results()
 optsampler.plot()
-
 # now for the linear (normalisation) parameters:
 
 # set up a prior log-probability density function for these linear parameters:

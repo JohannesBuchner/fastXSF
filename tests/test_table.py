@@ -43,6 +43,7 @@ def test_disk_table():
     ZHe = 1
     ZFe = 1
     for z in 0.0, 1.0, 2.0, 4.0:
+        print(f"Case: redshift={z}")
         ftable = FixedTable(get_fullfilename("diskreflect.fits"), energies, redshift=z)
         A = atable(energies, [PhoIndex, Ecut, Incl, z])
         B = fastxsf.x.pexmon(energies=energies, pars=[PhoIndex, Ecut, -1, z, ZHe, ZFe, Incl]) / (1 + z)**2 / 2

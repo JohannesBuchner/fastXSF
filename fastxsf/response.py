@@ -1,11 +1,86 @@
 """Functionality for linear instrument response."""
 # from https://github.com/dhuppenkothen/clarsach/blob/master/clarsach/respond.py
 # GPL licenced code from the Clàrsach project
+from functools import partial
 
 import astropy.io.fits as fits
+import jax
 import numpy as np
 
-__all__ = ["RMF", "ARF"]
+__all__ = ["RMF", "ARF", "MockARF"]
+
+
+def _apply_rmf(spec, in_indices, out_indices, weights, detchans):
+    """Apply RMF.
+
+    Parameters
+    ----------
+    spec: array
+        Input spectrum.
+    in_indices: array
+        List of indices for spec.
+    out_indices: array
+        list of indices for where to add into output array
+    weights: array
+        list of weights for multiplying *spec[outindex]* when adding to output array
+    detchans: int
+        length of output array
+
+    Returns
+    -------
+    out: array
+        Summed entries.
+    """
+    contribs = spec[in_indices] * weights
+    out = jax.numpy.zeros(detchans)
+    out = out.at[out_indices].add(contribs)
+    return out
+
+
+def _apply_rmf_vectorized(specs, in_indices, out_indices, weights, detchans):
+    """Apply RMF to many spectra.
+
+    Parameters
+    ----------
+    specs: array
+        List of input spectra.
+    in_indices: array
+        List of indices for spec.
+    out_indices: array
+        list of indices for where to add into output array
+    weights: array
+        list of weights for multiplying *spec[outindex]* when adding to output array
+    detchans: int
+        length of output array
+
+    Returns
+    -------
+    out: array
+        Summed entries. Shape=(len(specs), detchans)
+    """
+    out = jax.numpy.zeros((len(specs), detchans))
+
+    def body_fun(j, out):
+        """Sum up one spectrum.
+
+        Parameters
+        ----------
+        j: int
+            index of spectrum.
+        out: array
+            will store into out[j,:]
+
+        Returns
+        -------
+        out_row: array
+            returns out[j]
+        """
+        spec = specs[j]
+        contribs = spec[in_indices] * weights
+        return out.at[j, out_indices].add(contribs)
+
+    out = jax.lax.fori_loop(0, len(specs), body_fun, out)
+    return out
 
 
 class RMF(object):
@@ -58,7 +133,6 @@ class RMF(object):
 
         detchans : int
             The number of channels in the detector
-
         """
         # open the FITS file and extract the MATRIX extension
         # which contains the redistribution matrix and
@@ -85,14 +159,14 @@ class RMF(object):
 
         # extract + store the attributes described in the docstring
         n_grp = np.array(data.field("N_GRP"))
-        f_chan = np.array(data.field('F_CHAN'))
+        f_chan = np.array(data.field("F_CHAN"))
         n_chan = np.array(data.field("N_CHAN"))
         matrix = np.array(data.field("MATRIX"))
 
         self.energ_lo = np.array(data.field("ENERG_LO"))
         self.energ_hi = np.array(data.field("ENERG_HI"))
         self.energ_unit = data.columns["ENERG_LO"].unit
-        self.detchans = hdr["DETCHANS"]
+        self.detchans = int(hdr["DETCHANS"])
         self.offset = self.__get_tlmin(h)
 
         # flatten the variable-length arrays
@@ -131,12 +205,35 @@ class RMF(object):
         return tlmin
 
     def _flatten_arrays(self, n_grp, f_chan, n_chan, matrix):
+        """Flatten array.
 
+        Parameters
+        ----------
+        n_grp: array
+            number of groups
+        f_chan: array
+            output start indices
+        n_chan: array
+            number of output indices
+        matrix: array
+            weights
+
+        Returns
+        -------
+        n_grp: array
+            number of groups
+        f_chan: array
+            output start indices
+        n_chan: array
+            number of output indices
+        matrix: array
+            weights
+        """
         if not len(n_grp) == len(f_chan) == len(n_chan) == len(matrix):
             raise ValueError("Arrays must be of same length!")
 
         # find all non-zero groups
-        nz_idx = (n_grp > 0)
+        nz_idx = n_grp > 0
 
         # stack all non-zero rows in the matrix
         matrix_flat = np.hstack(matrix[nz_idx], dtype=float)
@@ -151,7 +248,7 @@ class RMF(object):
         # n_grp
         f_chan_new = []
         n_chan_new = []
-        for i,t in enumerate(nz_idx):
+        for i, t in enumerate(nz_idx):
             if t:
                 n = n_grp[i]
                 f = f_chan[i]
@@ -169,8 +266,7 @@ class RMF(object):
         return n_grp, f_chan_flat, n_chan_flat, matrix_flat
 
     def strip(self, channel_mask):
-        """
-        Strip response matrix of entries outside the channel mask.
+        """Strip response matrix of entries outside the channel mask.
 
         Parameters
         ----------
@@ -203,7 +299,7 @@ class RMF(object):
             # loop over the current number of groups
             for current_num_chans, counts_idx in zip(
                 self.n_chan[k:k + current_num_groups],
-                self.f_chan[k:k + current_num_groups]
+                self.f_chan[k:k + current_num_groups],
             ):
                 # add the flux to the subarray of the counts array that starts with
                 # counts_idx and runs over current_num_chans channels
@@ -243,7 +339,27 @@ class RMF(object):
         self.energ_hi = np.array(energ_hi_new)
 
         self.matrix = np.hstack(matrix_new)
+        i = np.argsort(out_indices)
+        # self.dense_info = in_indices[i], out_indices[i], weights[i]
         self.dense_info = in_indices, out_indices, weights
+        self._apply_rmf = jax.jit(
+            partial(
+                _apply_rmf,
+                in_indices=in_indices,
+                out_indices=out_indices,
+                weights=weights,
+                detchans=self.detchans,
+            )
+        )
+        self._apply_rmf_vectorized = jax.jit(
+            partial(
+                _apply_rmf_vectorized,
+                in_indices=in_indices,
+                out_indices=out_indices,
+                weights=weights,
+                detchans=self.detchans,
+            )
+        )
         return strip_mask
 
     def apply_rmf(self, spec):
@@ -284,12 +400,18 @@ class RMF(object):
         counts : numpy.ndarray
             The (model) spectrum after folding, in
             counts/s/channel
-
         """
         if self.dense_info is not None:
-            out = np.zeros(self.detchans)
-            in_indices, out_indices, weights = self.dense_info
-            np.add.at(out, out_indices, spec[in_indices] * weights)
+            # in_indices, out_indices, weights = self.dense_info
+            # 0.001658s/call; 0.096s/likelihood eval
+            # out = np.zeros(self.detchans)
+            # np.add.at(out, out_indices, spec[in_indices] * weights)
+            # 0.004929s/call; 0.106s/likelihood eval
+            # out = np.bincount(out_indices, weights=spec[in_indices] * weights, minlength=self.detchans)
+            # 0.001963s/call; 0.077s/likelihood eval
+            out = self._apply_rmf(
+                spec
+            )  # , in_indices, out_indices, weights, self.detchans)
             return out
 
         # get the number of channels in the data
@@ -306,7 +428,6 @@ class RMF(object):
 
         # loop over all channels
         for i in range(nchannels):
-
             # this is the current bin in the flux spectrum to
             # be folded
             source_bin_i = spec[i]
@@ -367,15 +488,18 @@ class RMF(object):
         -------
         counts : numpy.ndarray
             The (model) spectrum after folding, in counts/s/channel
-
         """
+        import tqdm
+
         # get the number of channels in the data
         nspecs, nchannels = specs.shape
-        if self.dense_info is not None:
-            in_indices, out_indices, weights = self.dense_info
+        if self.dense_info is not None:  # and nspecs < 40:
+            # in_indices, out_indices, weights = self.dense_info
             out = np.zeros((nspecs, self.detchans))
-            for i in range(nspecs):
-                np.add.at(out[i], out_indices, specs[i,in_indices] * weights)
+            for i in tqdm.trange(nspecs):
+                # out[i] = np.bincount(out_indices, weights=specs[i,in_indices] * weights, minlength=self.detchans)
+                out[i] = self._apply_rmf(specs[i])
+            # out = self._apply_rmf_vectorized(specs)
             return out
 
         # an empty array for the output counts
@@ -388,8 +512,7 @@ class RMF(object):
         resp_idx = 0
 
         # loop over all channels
-        for i in range(nchannels):
-
+        for i in tqdm.trange(nchannels):
             # this is the current bin in the flux spectrum to
             # be folded
             source_bin_i = specs[:,i]
@@ -404,14 +527,16 @@ class RMF(object):
             ):
                 # add the flux to the subarray of the counts array that starts with
                 # counts_idx and runs over current_num_chans channels
-                to_add = np.outer(source_bin_i, self.matrix[resp_idx:resp_idx + current_num_chans])
-                counts[:,counts_idx:counts_idx + current_num_chans] += to_add
+                to_add = np.outer(
+                    source_bin_i, self.matrix[resp_idx:resp_idx + current_num_chans]
+                )
+                counts[:, counts_idx:counts_idx + current_num_chans] += to_add
 
                 # iterate the response index for next round
                 resp_idx += current_num_chans
             k += current_num_groups
 
-        return counts[:,:self.detchans]
+        return counts[:, : self.detchans]
 
     def get_dense_matrix(self):
         """Extract the redistribution matrix as a dense numpy matrix.
@@ -458,7 +583,7 @@ class RMF(object):
 
                 outslice = slice(counts_idx, counts_idx + current_num_chans)
                 inslice = slice(resp_idx, resp_idx + current_num_chans)
-                dense_matrix[i,outslice] = self.matrix[inslice]
+                dense_matrix[i, outslice] = self.matrix[inslice]
 
                 # iterate the response index for next round
                 resp_idx += current_num_chans
@@ -554,7 +679,9 @@ class ARF(object):
         """
         assert spec.shape[0] == self.specresp.shape[0], (
             "Input spectrum and ARF must be of same size.",
-            spec.shape, self.specresp.shape)
+            spec.shape,
+            self.specresp.shape,
+        )
         e = self.exposure if exposure is None else exposure
         return np.array(spec) * self.specresp * e
 
@@ -563,6 +690,13 @@ class MockARF(ARF):
     """Mock area response file."""
 
     def __init__(self, rmf):
+        """Initialise.
+
+        Parameters
+        ----------
+        rmf: RMF
+            RMF object to mimic.
+        """
         self.e_low = rmf.energ_lo
         self.e_high = rmf.energ_hi
         self.e_unit = rmf.energ_unit
