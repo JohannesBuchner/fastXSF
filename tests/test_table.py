@@ -47,7 +47,7 @@ def test_disk_table():
         ftable = FixedTable(get_fullfilename("diskreflect.fits"), energies, redshift=z)
         A = atable(energies, [PhoIndex, Ecut, Incl, z])
         B = fastxsf.x.pexmon(energies=energies, pars=[PhoIndex, Ecut, -1, z, ZHe, ZFe, Incl]) / (1 + z)**2 / 2
-        C = ftable(energies, [PhoIndex, Ecut, Incl])
+        C = ftable(energies=energies, pars=[PhoIndex, Ecut, Incl])
         l, = plt.plot(e_mid, A / deltae / (1 + z)**2, label="atable")
         plt.plot(e_mid, B / deltae / (1 + z)**2, label="pexmon", ls=':', color=l.get_color())
         plt.xlabel("Energy [keV]")

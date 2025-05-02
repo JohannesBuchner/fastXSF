@@ -154,7 +154,7 @@ class RMF(object):
             raise AssertionError(f"{extnames} does not contain MATRIX or SPECRESP")
 
         data = h.data
-        hdr = h.header
+        hdr = dict(h.header)
         hdulist.close()
 
         # extract + store the attributes described in the docstring
@@ -342,6 +342,14 @@ class RMF(object):
         i = np.argsort(out_indices)
         # self.dense_info = in_indices[i], out_indices[i], weights[i]
         self.dense_info = in_indices, out_indices, weights
+        self._compile()
+        return strip_mask
+
+    def _compile(self):
+        """Prepare internal functions."""
+        if self.dense_info is None:
+            return
+        in_indices, out_indices, weights = self.dense_info
         self._apply_rmf = jax.jit(
             partial(
                 _apply_rmf,
@@ -360,7 +368,21 @@ class RMF(object):
                 detchans=self.detchans,
             )
         )
-        return strip_mask
+
+    def __getstate__(self):
+        """Get state for pickling."""
+        state = self.__dict__.copy()
+        # Remove non-pickleable functions
+        if "_apply_rmf" in state:
+            del state["_apply_rmf"]
+        if "_apply_rmf_vectorized" in state:
+            del state["_apply_rmf_vectorized"]
+        return state
+
+    def __setstate__(self, state):
+        """Restore state from pickling."""
+        self.__dict__.update(state)
+        self._compile()
 
     def apply_rmf(self, spec):
         """
@@ -630,12 +652,12 @@ class ARF(object):
         self.specresp = np.array(data.field("SPECRESP"))
 
         if "EXPOSURE" in list(hdr.keys()):
-            self.exposure = hdr["EXPOSURE"]
+            self.exposure = float(hdr["EXPOSURE"])
         else:
             self.exposure = 1.0
 
         if "FRACEXPO" in data.columns.names:
-            self.fracexpo = data["FRACEXPO"]
+            self.fracexpo = float(data["FRACEXPO"])
         else:
             self.fracexpo = 1.0
 
@@ -683,7 +705,7 @@ class ARF(object):
             self.specresp.shape,
         )
         e = self.exposure if exposure is None else exposure
-        return np.array(spec) * self.specresp * e
+        return spec * self.specresp * e
 
 
 class MockARF(ARF):

@@ -140,7 +140,7 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None, require_backgroun
         chan_mask=mask,
         RMF_src=armf,
         RMF=np.array(m[:, mask][strip_mask,:]),
-        ARF=np.array(aarf.specresp),
+        ARF=np.array(aarf.specresp, dtype=float),
         e_lo=np.array(aarf.e_low),
         e_hi=np.array(aarf.e_high),
         e_delta=np.array(aarf.e_high - aarf.e_low),
@@ -153,7 +153,10 @@ def load_pha(filename, elo, ehi, load_absorption=True, z=None, require_backgroun
         bkg_expoarea=bexposure * bareascal,
         src_to_bkg_ratio=areascal / bareascal * backscal / bbackscal * exposure / bexposure,
     )
-    data["chan_const_spec_weighting"] = np.dot(data["e_delta"] * data["ARF"], data["RMF"]) * data["src_expoarea"]
+    data["chan_const_spec_weighting"] = data["RMF_src"].apply_rmf(
+        data["ARF"] * data['e_lo']**-1.4)[data['chan_mask']] * data['src_expoarea']
+
+    # data["chan_const_spec_weighting"] = np.dot(data["ARF"], data["RMF"]) * data["src_expoarea"]
 
     if os.path.exists(backfile + "_model.fits"):
         bkg_model = pyfits.getdata(backfile + "_model.fits", "SPECTRA")
