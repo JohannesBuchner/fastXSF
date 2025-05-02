@@ -58,6 +58,11 @@ absAGN = fastxsf.model.Table(tablepath)
 print(f'took {time.time() - t0:.3f}s')
 t0 = time.time()
 print("preparing folded table models...")
+absAGNs = {
+    k: fastxsf.model.FixedTable(
+        tablepath, energies=data['energies'], redshift=redshift)
+    for k, data in data_sets.items()
+}
 absAGN_folded = {
     k: fastxsf.model.FixedFoldedTable(
         tablepath, energies=data['energies'], ARF=data['ARF'] * galabsos[k], RMF=data['RMF_src'], redshift=redshift, fix=dict(Ecut=400, Theta_inc=60))
@@ -214,7 +219,7 @@ class LinkedPredictionPacker:
             l_bkg_data, = ax.plot(x, data['bkg_region_counts'] * bkg_factor, marker=marker, ls=' ', ms=2, mfc='none', mec=colors[k + ' total'], label=f' bkg: {k}', alpha=0.5)
             ylo = min(ylo, np.min((0.1 + data['src_region_counts']) * src_factor))
             yhi = max(yhi, np.max(1.5 * data['src_region_counts'] * src_factor))
-            
+
             if k == key_first_dataset:
                 legend_entries_first_dataset += [l_data, l_bkg_data]
                 legend_entries_first_dataset_labels += ['data', 'bkg']
@@ -241,7 +246,7 @@ class LinkedPredictionPacker:
                     l_component, = ax.plot(x, norms[j] * X[left:left + Ndata, j] * src_factor, alpha=0.5, lw=1, ls=ls, label=label, color=color)
                     colors[k + ' ' + linear_param_names[j]] = l_component.get_color()
                     colors[linear_param_names[j]] = l_component.get_color()
-            
+
                     if k == key_first_dataset and i == 0:
                         legend_entries_first_dataset += [l_component]
                         legend_entries_first_dataset_labels += [statmodel.linear_param_names[j]]
@@ -278,6 +283,7 @@ class LinkedPredictionPacker:
         ax.set_xlabel('Energy [keV]')
 
 
+# TODO, this class is not functional
 class IndependentPredictionPacker:
     """Map source and background spectral components to counts,
 
@@ -337,7 +343,81 @@ class IndependentPredictionPacker:
         return pred_fluxes
 
 
-def compute_model_components(params):
+# for some slow models and any where the params are the same across all data sets,
+# it would be advantageous to call the model once with a deduplicated energy grid,
+# and then distribute the results.
+all_energies_with_duplicates = np.hstack([data['energies'] for k, data in data_sets.items()])
+all_energies = np.unique(all_energies_with_duplicates)
+#all_energies_indices = {k: np.array([np.where(all_energies == e)[0][0] for e in data['energies']])
+#    for k, data in data_sets.items()}
+all_energies_indices = {k: np.searchsorted(all_energies, data['energies']) for k, data in data_sets.items()}
+
+def deduplicated_evaluation(model, pars):
+    all_spec = model(energies=all_energies, pars=pars)
+    all_spec_cumsum = np.concatenate([[0], all_spec.cumsum()])
+    # distribute:
+    results = {}
+    for k, data in data_sets.items():
+        energies = data['energies']
+        if np.any(energies < all_energies[0]) or np.any(energies > all_energies[-1]):
+            raise ValueError(f"Energy range for {k} is out of bounds of all_energies.")
+        indices = all_energies_indices[k]
+        # models compute the sum between energy_lo and energy_hi
+        # so a wider bin needs to sum the entries between its energy_lo and energy_hi.
+        indices_left = indices[:-1]
+        indices_right = indices[1:]
+        results[k] = all_spec_cumsum[indices_right] - all_spec_cumsum[indices_left]
+    return results
+
+
+# define spectral components
+def compute_model_components_simple_unfolded(params):
+    logNH, PhoIndex, TORsigma, CTKcover, kT = params
+
+    # compute model components for each data set:
+    apec_components = deduplicated_evaluation(fastxsf.x.apec, pars=[kT, 1.0, redshift])
+
+    pred_spectra = {}
+    for k, data in data_sets.items():
+        energies = data['energies']
+        # first component: a absorbed power law
+        abspl_component = absAGNs[k](energies=energies, pars=[
+            10**(logNH - 22), PhoIndex, Ecut, TORsigma, CTKcover, Incl])
+
+        # second component, a copy of the unabsorbed power law
+        scat_component = fastxsf.x.zpowerlw(energies=energies, pars=[PhoIndex, redshift])
+
+        # third component, a apec model
+        # apec_component = np.clip(fastxsf.x.apec(energies=energies, pars=[kT, 1.0, redshift]), 0, None)
+        apec_component = np.clip(apec_components[k], 0, None)
+
+        background_component = data['bkg_model_src_region'] * data['src_expoarea']
+        background_component_bkg_region = data['bkg_model_bkg_region'] * data['bkg_expoarea']
+
+        pred_spectra[k] = [background_component, abspl_component, scat_component, apec_component]
+        pred_spectra[k + '_bkg'] = [background_component_bkg_region]
+
+    return pred_spectra
+
+
+# fold each spectral component through the appropriate response
+def compute_model_components_simple(params):
+    pred_spectra = compute_model_components_simple_unfolded(params)
+    pred_counts = {}
+    for k, data in data_sets.items():
+        pred_counts[k] = list(pred_spectra[k])
+        pred_counts[k + '_bkg'] = list(pred_spectra[k + '_bkg'])
+        src_spectral_components = pred_spectra[k][1:]  # skip background
+        for j, src_spectral_component in enumerate(src_spectral_components):
+            # now let's apply the response to each component:
+            pred_counts[k][j + 1] = data['RMF_src'].apply_rmf(
+                data['ARF'] * galabsos[k] * src_spectral_component)[data['chan_mask']] * data['src_expoarea']
+            assert np.all(pred_counts[k][j + 1] >= 0), (k, j + 1)
+    return pred_counts
+
+
+# faster version, based on precomputed tables
+def compute_model_components_precomputed(params):
     assert np.isfinite(params).all(), params
     logNH, PhoIndex, TORsigma, CTKcover, kT = params
 
@@ -345,59 +425,23 @@ def compute_model_components(params):
 
     for k, data in data_sets.items():
         # compute model components for each data set:
-        #src_spectral_components = [abs_component, scat, apec]
-        pred_counts[k] = []
-        pred_counts[k].append(data['bkg_model_src_region'] * data['src_expoarea'])
-        assert np.all(pred_counts[k][0] >= 0)
-        pred_counts[k + '_bkg'] = []
-        pred_counts[k + '_bkg'].append(data['bkg_model_bkg_region'] * data['bkg_expoarea'])
-        assert np.all(pred_counts[k + '_bkg'][0] >= 0)
+        pred_counts[k] = [data['bkg_model_src_region'] * data['src_expoarea']]
+        pred_counts[k + '_bkg'] = [data['bkg_model_bkg_region'] * data['bkg_expoarea']]
 
-        # energies = data['energies']
         # first component: a absorbed power law
         pred_counts[k].append(absAGN_folded[k](pars=[10**(logNH - 22), PhoIndex, TORsigma, CTKcover])[data['chan_mask']] * data['src_expoarea'])
-        #abs_component = absAGNs[k](energies=energies, pars=[
-        #    10**(logNH - 22), PhoIndex, Ecut, TORsigma, CTKcover, Incl])
 
         # second component, a copy of the unabsorbed power law
         pred_counts[k].append(scat_folded[k](PhoIndex)[data['chan_mask']] * data['src_expoarea'])
-        #scat = fastxsf.x.zpowerlw(energies=energies, pars=[PhoIndex, redshift])
 
         # third component, a apec model
-        #apec = np.clip(fastxsf.x.apec(energies=energies, pars=[kT, 1.0, redshift]), 0, None)
         pred_counts[k].append(apec_folded[k](kT)[data['chan_mask']] * data['src_expoarea'])
-        #assert np.all(abs_component >= 0)
-        #assert np.all(scat >= 0)
-        #assert np.all(apec >= 0), apec[~(apec >= 0)]
-
-        #weighted_src_spectral_components = np.einsum('i,i,ji->ji', data['ARF'], galabsos[k], src_spectral_components)
-        #for row in data['RMF_src'].apply_rmf_vectorized(weighted_src_spectral_components):
-        #    pred_counts[k].append(row[data['chan_mask']] * data['src_expoarea'])
-        #    assert np.all(row >= 0), k
-        #for src_spectral_component in weighted_src_spectral_components:
-        #    # now let's apply the response to each component:
-        #    pred_counts[k].append(data['RMF_src'].apply_rmf(src_spectral_component)[data['chan_mask']] * data['src_expoarea'])
-        #    assert np.all(pred_counts[k][-1] >= 0), k
-        """
-        src_spectral_components = np.array([abs_component, scat, apec])
-        assert np.all(abs_component >= 0)
-        assert np.all(scat >= 0)
-        assert np.all(apec >= 0), apec[~(apec >= 0)]
-        pred_counts[k] = np.zeros((4, data['chan_mask'].sum()))
-        pred_counts[k][0] = data['bkg_model_src_region'] * data['src_expoarea']
-        assert np.all(pred_counts[k][0] >= 0)
-        pred_counts[k + '_bkg'] = np.zeros((4, data['chan_mask'].sum()))
-        pred_counts[k + '_bkg'][0] = data['bkg_model_bkg_region'] * data['bkg_expoarea']
-        assert np.all(pred_counts[k + '_bkg'][0] >= 0)
-        #pred_counts[k][1:,:] = data['RMF_src'].apply_rmf_vectorized(
-        #    src_spectral_components * (data['ARF'] * galabsos[k]))[:,data['chan_mask']] * data['src_expoarea']
-        for j, src_spectral_component in enumerate(src_spectral_components):
-            # now let's apply the response to each component:
-            pred_counts[k][j] = data['RMF_src'].apply_rmf(
-                data['ARF'] * galabsos[k] * src_spectral_component)[data['chan_mask']] * data['src_expoarea']
-            assert np.all(pred_counts[k][j] >= 0), (k, j)
-        """
     return pred_counts
+
+
+# compute_model_components = compute_model_components_precomputed
+compute_model_components = compute_model_components_simple
+
 
 def compute_model_components_intrinsic(params, energies):
     logNH, PhoIndex, TORsigma, CTKcover, kT = params
@@ -527,7 +571,6 @@ pp.prior_predictive_check_plot(fig.gca(), unit='area')
 #plt.legend(ncol=4)
 plt.savefig('multispecopt-priorpc.pdf')
 plt.close()
-"""
 print("starting benchmark...")
 import time, tqdm
 t0 = time.time()
@@ -542,7 +585,6 @@ for i in tqdm.trange(1000):
     assert np.isfinite(norms).all()
     pred_counts = norms @ X.T
 print('Duration:', (time.time() - t0) / 1000)
-"""
 
 # create a UltraNest sampler from this. You can pass additional arguments like here:
 optsampler = statmodel.ReactiveNestedSampler(
@@ -605,7 +647,7 @@ for i, (params, pred_counts) in enumerate(zip(samples[:40], y_pred_samples[:40])
     nonlinear_params = params[Nlinear:]
     X = compute_model_components_intrinsic(nonlinear_params, data_sets['Chandra']['energies'])
     X2 = compute_model_components_intrinsic(nonlinear_params, data_sets['NuSTAR-FPMA']['energies'])
-    
+
     energy_fluxes.append([energy_flux(Ni * Xi, data_sets['Chandra']['energies'], 2, 8) / (u.erg/u.s/u.cm**2) for Ni, Xi in zip(norms, X)])
     luminosities.append([luminosity(Ni * Xi, data_sets['Chandra']['energies'], 2, 10, z=redshift, cosmo=cosmo) / (u.erg/u.s) for Ni, Xi in zip(norms, X)])
 
